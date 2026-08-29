@@ -7,9 +7,9 @@ X API の有料プラン(Basic以上)が必要な「ブックマークAPI」は�
 **Googleスプレッドシートへの手動転記**をデータソースにすることで無料で運用できる構成にしています。
 
 - ワークフロー: [X Bookmark Daily Digest](https://yoshi0418.app.n8n.cloud/workflow/v7Pq04POZSMicf43)
-- 実行頻度: 毎日 8:00
+- 実行頻度: 毎日 0:00 と 12:00 の1日2回(日本時間 / Asia/Tokyo)
 - データソース: Googleスプレッドシート「X Bookmarks Inbox」(手動転記)
-- 保存先: Google Docs(1日1ドキュメント)
+- 保存先: Google Docs(実行のたびに1ドキュメント。タイトルに日時を含むため0:00分/12:00分は別ファイルになります)
 
 > 旧バージョン(X API Bookmarks エンドポイントを使う有料プラン前提の構成)はアーカイブ済みです。
 
@@ -17,7 +17,7 @@ X API の有料プラン(Basic以上)が必要な「ブックマークAPI」は�
 
 ## 全体の流れ
 
-1. **Daily 08:00 Trigger** — Schedule Trigger で毎朝起動
+1. **Twice Daily Trigger (00:00 / 12:00)** — Schedule Trigger で日本時間0:00と12:00に起動
 2. **Read Bookmarks Sheet** — スプレッドシート「X Bookmarks Inbox」の全行を取得
 3. **Filter Unprocessed Rows** — `processed` 列が `TRUE` でない行(=まだ分析していないブックマーク)だけに絞り込み
    - 新規分が0件の日はここで処理が自然に終了し、空のレポートは作られない
@@ -129,7 +129,7 @@ OpenAI(分析用)は既存のクレジットを自動でセット済みです。
 
 ## カスタマイズ
 
-- 実行時刻/頻度: `Daily 08:00 Trigger` ノードのスケジュール設定を変更
+- 実行時刻/頻度: `Twice Daily Trigger (00:00 / 12:00)` ノードのスケジュール設定を変更
 - レポート形式: `Analyze Bookmarks` ノードの `systemMessage` を編集
 - 有料のX APIを使えるようになった場合は、`Read Bookmarks Sheet` / `Filter Unprocessed Rows` /
   `Mark Rows Processed` を X API 経由のブックマーク取得ノードに差し替えることで自動収集に切り替え可能
