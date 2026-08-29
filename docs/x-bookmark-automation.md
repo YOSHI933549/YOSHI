@@ -13,6 +13,8 @@ X API の有料プラン(Basic以上)が必要な「ブックマークAPI」は�
 
 > 旧バージョン(X API Bookmarks エンドポイントを使う有料プラン前提の構成)はアーカイブ済みです。
 
+**動作確認済み(2026-08-29)**: ブックマークレット→シート追記→n8nの読み込み→AI分析→Google Docsレポート作成まで、実際のブックマーク投稿でテスト実行し成功しています。
+
 ## 全体の流れ
 
 1. **Daily 08:00 Trigger** — Schedule Trigger で毎朝起動
@@ -49,7 +51,8 @@ Xで投稿を開いた状態でこのボタンを押すと、URLと本文が自�
 
 ```javascript
 function doGet(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet1');
+  var ss = SpreadsheetApp.openById('YOUR_SPREADSHEET_ID');
+  var sheet = ss.getSheets()[0];
   var url = e.parameter.url || '';
   var text = e.parameter.text || '';
   var author = e.parameter.author || '';
@@ -61,7 +64,12 @@ function doGet(e) {
 }
 ```
 
-  (シート名が「Sheet1」でない場合は `'Sheet1'` の部分を実際のシート名に変更してください)
+  `YOUR_SPREADSHEET_ID` は、スプレッドシートのURL(`https://docs.google.com/spreadsheets/d/【ここ】/edit`)の
+  `/d/` と `/edit` の間にある文字列に置き換えてください。
+
+  > `SpreadsheetApp.getActiveSpreadsheet()` はWeb App経由の実行では `null` を返すことがあり、
+  > `TypeError: Cannot read properties of null (reading 'appendRow')` の原因になります。
+  > `openById` で明示的に指定するのが確実です。`getSheets()[0]` なので、シート名が「Sheet1」でも「シート1」でも動きます。
 
 3. 右上の **デプロイ → 新しいデプロイ** をクリック
 4. 種類の選択(歯車アイコン)で **ウェブアプリ** を選択
@@ -107,6 +115,17 @@ OpenAI(分析用)は既存のクレジットを自動でセット済みです。
 
 スプレッドシートの `processed` 列に処理済みフラグを立てることで、
 翌日以降は同じ行を再分析しないようにしています。
+
+## トラブルシューティング
+
+- **`TypeError: Cannot read properties of null (reading 'appendRow')`**: Apps Scriptで
+  `getActiveSpreadsheet()` を使っていると発生することがあります。`openById('スプレッドシートID')` に変更してください。
+- **見出しセルの表記ゆれ**: `url ` のように余分な空白が入っていると、n8n側でその列が正しく読み取れず
+  レポートに `undefined` と出ることがあります。`Build Report Prompt` ノードは見出しの前後の空白を無視するように
+  対応済みですが、気になる場合はシートの見出しセル自体を修正しても構いません。
+- **同じ名前のスプレッドシートを複数作ってしまった場合**: Apps Scriptの`openById`のID、
+  n8nの`Read Bookmarks Sheet`/`Mark Rows Processed`ノードのスプレッドシート指定が
+  すべて同じIDを指しているか確認してください。
 
 ## カスタマイズ
 
