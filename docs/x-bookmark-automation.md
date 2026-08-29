@@ -122,9 +122,25 @@ javascript:(function(){var t=document.querySelector('article[data-testid="tweet"
 n8n の Credentials 画面で以下を作成してください(セキュリティ上、Claude側では作成できません)。
 
 1. **Google Sheets account**(OAuth2)
-2. **Google Docs account**(OAuth2)
-3. **Gmail account**(OAuth2) — Xブックマークのメール検知用
-4. **Youtube API Key**(Query Auth, パラメータ名 `key`)— YouTube連携用。取得手順は下記「YouTube連携」を参照
+2. **Google Docs account**(OAuth2)— 現在は未使用(旧方式の名残)。将来的に削除しても構いません
+3. **Google Drive account**(OAuth2)— レポートをHTML→Googleドキュメント変換で保存するのに必要
+4. **Gmail account**(OAuth2) — Xブックマークのメール検知用
+5. **Youtube API Key**(Query Auth, パラメータ名 `key`)— YouTube連携用。取得手順は下記「YouTube連携」を参照
+
+### レポートの見た目(色付き・太字)
+
+AIの出力はMarkdown形式(`##`見出し、`**太字**`、`- `箇条書き)にしてから、
+`Markdown`ノードでHTMLに変換し、見出しに色(青系の背景、緑の下線)・太字ラベルにオレンジ色を
+インラインスタイルで付与しています。そのHTMLを、Google Docsノード(プレーンテキストのみ対応)ではなく
+**Google Drive APIの直接アップロード**(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`、
+`mimeType: application/vnd.google-apps.document` を指定してHTML→Googleドキュメント変換)で保存しています。
+これにより、見出し・太字・色などのメリハリがドキュメントに反映されます。
+
+該当ノード: `Report Markdown to HTML` → `Build Report HTML Document` → `Build Report Multipart Body` → `Upload Report Doc`
+(バックフィル版は `Backfill Markdown to HTML` → `Build Backfill HTML Document` → `Build Backfill Multipart Body` → `Upload Backfill Report Doc`)
+
+色やスタイルを変更したい場合は、`Build Report HTML Document` / `Build Backfill HTML Document` の
+`jsCode` 内にある `style="..."` の値を編集してください。
 
 ### 4. ワークフロー内でシート/フォルダを選択
 
