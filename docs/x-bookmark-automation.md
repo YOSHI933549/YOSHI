@@ -11,7 +11,7 @@ X API・YouTube Data APIとも、有料プランが必須な部分は使わず(Y
 - 実行頻度: 毎日 12:00 と 21:00 の1日2回(日本時間 / Asia/Tokyo)
 - データソース:
   - X: Googleスプレッドシート「X Bookmarks Inbox」(共有→メールで自動追記、下記参照)
-  - YouTube: 10チャンネルをRSSで30分ごとに自動監視 + 過去の人気動画は手動ボタンで一括取得
+  - YouTube: 10チャンネルをRSSで30分ごとに自動監視 + 過去の人気動画は毎週月曜8:00に自動取得(手動ボタンでも即時実行可)
 - 保存先: Google Docs(実行のたびに1ドキュメント。タイトルに日時を含むため12:00分/21:00分は別ファイルになります)
 
 > 旧バージョン(X API Bookmarks エンドポイントを使う有料プラン前提の構成)はアーカイブ済みです。
@@ -29,14 +29,15 @@ X API・YouTube Data APIとも、有料プランが必須な部分は使わず(Y
 5. (分岐A) **Mark Rows Processed** — 処理済みに更新(重複分析防止)
 6. (分岐B) YouTubeの未処理分と合流 → **Build Report Prompt → Analyze Bookmarks(AI)** — トピック別に4項目(概要/具体的な要点/注目ポイント/示唆)で分析し、最後に「How to: AIを育てる実践ガイド」を含む日本語レポート(Markdown)を生成
 7. **Report Markdown to HTML → Build Report HTML Document → Build Report Multipart Body → Upload Report Doc** — MarkdownをHTMLに変換して色付き・太字のスタイルを付け、Google Drive APIで新規Google Docsとして保存(詳細は下記「レポートの見た目」を参照)
-8. **Send Report Notification**(Gmail) — レポート作成後、`vllyb.0418@gmail.com` 宛にタイトルとGoogle Docsリンクをメールで通知(件名: 「(レポート名) が完成しました」)
 
-新規分が0件の日はレポートが自然に作られない(空のレポートを作らない設計)。この場合は通知メールも送信されません。
+新規分が0件の日はレポートが自然に作られない(空のレポートを作らない設計)。
+
+メール通知は行いません(Google Docsを直接確認する運用)。
 
 ### YouTube(下記「YouTube連携」を参照)
 
 - 10チャンネルをRSSで30分ごとに監視 → 新着があれば上記のXブックマークと同じレポートに合流
-- 過去の人気動画は「Run YouTube Backfill」ボタンで手動実行 → 別建てのGoogle Docsに一括レポート化
+- 過去の人気動画は**毎週月曜8:00に自動実行**(`Weekly YouTube Backfill Trigger`)。「Run YouTube Backfill」ボタンで手動実行も可能。いずれも前回まだ報告していない新しい上位動画だけをレポート化するため、同じ内容が重複して報告されることはありません
 
 ## 事前準備(ユーザー側で実施が必要)
 
@@ -178,15 +179,21 @@ Xと同様、**無料のRSSフィード**と**無料のYouTube Data API**だけ�
 (`youtube_video_log`)に記録され、次回の12:00/21:00のレポートにXブックマークと合わせて
 「【YouTube新着動画】」セクションとして反映されます。
 
-### 過去の人気動画(手動・1回限り)
+### 過去の人気動画(毎週月曜8:00に自動実行、手動ボタンでも実行可)
 
-`Run YouTube Backfill` という手動実行ボタン(Manual Trigger)で、各チャンネルの
-「AI」キーワードに一致する再生数上位3本ずつ(YouTube Data APIの `search.list`、
-`order=viewCount`)を取得し、チャンネル別に分類したレポートを
-「YouTube人気動画まとめ - (日付)」という別のGoogle Docsに作成します。
-通常の定期レポートには混ざりません(取得した動画は `processed=TRUE` として記録)。
-完成すると `Send Backfill Notification`(Gmail)が `vllyb.0418@gmail.com` 宛にタイトルと
-Google Docsリンクを通知します(12:00/21:00レポートの通知と同じ仕組み)。
+`Weekly YouTube Backfill Trigger`(毎週月曜8:00、Asia/Tokyo)で自動的に、または
+`Run YouTube Backfill` という手動実行ボタン(Manual Trigger)を押すことで即座に、
+各チャンネルの「AI」キーワードに一致する再生数上位3本ずつ(YouTube Data APIの
+`search.list`、`order=viewCount`)を取得します。
+
+このうち **`youtube_video_log` にまだ記録されていない(=前回までに報告していない)動画だけ**を
+チャンネル別に分類したレポートにまとめ、「YouTube人気動画まとめ - (日付)」という
+別のGoogle Docsに作成します(`Filter New Backfill Video` で新規のみに絞り込んでから
+`Build Backfill Prompt` に渡す設計のため、同じ動画が毎回重複して報告されることはありません)。
+新規の上位動画が0件の週はレポート自体が作られません。
+通常の定期レポートには混ざりません(バックフィルで取得した動画は `processed=TRUE` として記録)。
+
+メール通知は行いません(Google Docsを直接確認する運用)。
 
 チャンネルを追加・変更したい場合は、`Channel List` ノード(バックフィル用)と
 `Watch YouTube: ○○` ノード群(新着監視用)の両方を編集してください。
