@@ -27,10 +27,11 @@ X API・YouTube Data APIとも、有料プランが必須な部分は使わず(Y
 3. **Twice Daily Trigger (12:00 / 21:00)** — 日本時間12:00と21:00に起動
 4. **Read Bookmarks Sheet → Filter Unprocessed Rows** — `processed` 列が `TRUE` でない行だけに絞り込み
 5. (分岐A) **Mark Rows Processed** — 処理済みに更新(重複分析防止)
-6. (分岐B) YouTubeの未処理分と合流 → **Build Report Prompt → Analyze Bookmarks(AI)** — トピック別に分析する日本語レポートを生成
-7. **Create Report Doc → Write Report Content** — Google Docs に新規ドキュメントを作成し、レポート本文を書き込み
+6. (分岐B) YouTubeの未処理分と合流 → **Build Report Prompt → Analyze Bookmarks(AI)** — トピック別に4項目(概要/具体的な要点/注目ポイント/示唆)で分析し、最後に「How to: AIを育てる実践ガイド」を含む日本語レポート(Markdown)を生成
+7. **Report Markdown to HTML → Build Report HTML Document → Build Report Multipart Body → Upload Report Doc** — MarkdownをHTMLに変換して色付き・太字のスタイルを付け、Google Drive APIで新規Google Docsとして保存(詳細は下記「レポートの見た目」を参照)
+8. **Send Report Notification**(Gmail) — レポート作成後、`vllyb.0418@gmail.com` 宛にタイトルとGoogle Docsリンクをメールで通知(件名: 「(レポート名) が完成しました」)
 
-新規分が0件の日はレポートが自然に作られない(空のレポートを作らない設計)。
+新規分が0件の日はレポートが自然に作られない(空のレポートを作らない設計)。この場合は通知メールも送信されません。
 
 ### YouTube(下記「YouTube連携」を参照)
 
