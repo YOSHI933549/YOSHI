@@ -185,6 +185,8 @@ Xと同様、**無料のRSSフィード**と**無料のYouTube Data API**だけ�
 `order=viewCount`)を取得し、チャンネル別に分類したレポートを
 「YouTube人気動画まとめ - (日付)」という別のGoogle Docsに作成します。
 通常の定期レポートには混ざりません(取得した動画は `processed=TRUE` として記録)。
+完成すると `Send Backfill Notification`(Gmail)が `vllyb.0418@gmail.com` 宛にタイトルと
+Google Docsリンクを通知します(12:00/21:00レポートの通知と同じ仕組み)。
 
 チャンネルを追加・変更したい場合は、`Channel List` ノード(バックフィル用)と
 `Watch YouTube: ○○` ノード群(新着監視用)の両方を編集してください。
