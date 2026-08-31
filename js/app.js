@@ -36,6 +36,8 @@ function loadState() {
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // js/sync.js defines this when Google Drive sync is configured & signed in.
+    if (typeof scheduleSyncPush === "function") scheduleSyncPush();
   } catch (e) {
     console.error("state save failed", e);
     toast("保存に失敗しました(容量オーバーの可能性)。写真サイズを減らすか、古い記録を削除してください。");
