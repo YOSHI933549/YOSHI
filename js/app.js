@@ -1076,6 +1076,29 @@ function initSettings() {
   document.getElementById("exportBtn").addEventListener("click", exportData);
   document.getElementById("importInput").addEventListener("change", importData);
   document.getElementById("resetBtn").addEventListener("click", resetAllData);
+  document.getElementById("hardRefreshBtn").addEventListener("click", hardRefreshApp);
+}
+
+// Manual escape hatch for a stuck/stale cached version: unregister the
+// service worker, clear every Cache Storage entry it made, then reload.
+// Deliberately does NOT touch localStorage — the user's recorded data (and
+// the yoshi-sync-enabled flag) survive this untouched.
+async function hardRefreshApp() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch (e) {
+    console.warn("hard refresh cleanup failed", e);
+  } finally {
+    toast("更新しています...");
+    location.reload();
+  }
 }
 
 function renderSettings() {
