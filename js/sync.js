@@ -15,7 +15,7 @@
    一切影響しません。
    ========================================================================== */
 
-const GOOGLE_CLIENT_ID = "REPLACE_WITH_YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = "805113385533-ks36kpm1tmt33akakll4rs3umle2ck80.apps.googleusercontent.com";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 const DRIVE_FILE_NAME = "yoshi-health-tracker-state.json";
 const SYNC_ENABLED_KEY = "yoshi-sync-enabled";
@@ -31,27 +31,38 @@ let pushTimer = null;
 function syncEls() {
   return {
     notConfigured: document.getElementById("syncNotConfigured"),
+    loadFailed: document.getElementById("syncLoadFailed"),
     signedOut: document.getElementById("syncSignedOut"),
     signedIn: document.getElementById("syncSignedIn"),
     statusText: document.getElementById("syncStatusText"),
   };
 }
 
+// Every render starts by hiding all four sync-card states, then shows
+// exactly one — so a failure mode (like GIS not loading) can never leave
+// the card silently empty.
 function renderSyncUI(statusOverride) {
   const els = syncEls();
   if (!els.notConfigured) return; // settings panel not in DOM yet
+  els.notConfigured.classList.add("hidden");
+  els.loadFailed.classList.add("hidden");
+  els.signedOut.classList.add("hidden");
+  els.signedIn.classList.add("hidden");
+
   if (!SYNC_CONFIGURED) {
     els.notConfigured.classList.remove("hidden");
-    els.signedOut.classList.add("hidden");
-    els.signedIn.classList.add("hidden");
     return;
   }
-  els.notConfigured.classList.add("hidden");
+  if (!window.google || !google.accounts || !google.accounts.oauth2) {
+    els.loadFailed.classList.remove("hidden");
+    return;
+  }
   const signedIn = !!accessToken;
-  els.signedOut.classList.toggle("hidden", signedIn);
-  els.signedIn.classList.toggle("hidden", !signedIn);
   if (signedIn) {
+    els.signedIn.classList.remove("hidden");
     els.statusText.textContent = statusOverride || `最終同期: ${nowTimeStr()}`;
+  } else {
+    els.signedOut.classList.remove("hidden");
   }
 }
 
@@ -70,6 +81,7 @@ function initSync() {
       setTimeout(initSync, 250);
     } else {
       console.warn("Google Identity Services did not load; sync unavailable.");
+      renderSyncUI();
     }
     return;
   }
