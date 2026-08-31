@@ -790,3 +790,14 @@ function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
+// Register the service worker so the app can be added to the home screen
+// and keeps working offline (all data lives in localStorage already; this
+// just caches the app shell itself). Safe to skip if unsupported (e.g. file://).
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.warn("Service worker registration failed:", err);
+    });
+  });
+}

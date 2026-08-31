@@ -1,0 +1,19 @@
+{
+  "name": "健康・筋トレ・増量トラッカー",
+  "short_name": "健康トラッカー",
+  "description": "①健康 ②筋肉トレーニング ③体重を上げる ― 3つの目標を1つの記録で管理するアプリ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "ja",
+  "background_color": "#f5f7f4",
+  "theme_color": "#1f7a5c",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
