@@ -101,13 +101,19 @@ function initSync() {
 
   renderSyncUI();
 
-  // Resume a previous session automatically where possible. This needs a
-  // live Google session + prior consent, and browsers that block silent
-  // third-party auth (notably Safari/iOS) may simply do nothing here — the
-  // user can still tap "ログイン"/「今すぐ同期」manually in that case.
+  // Resume a previous session automatically where possible, and — this is
+  // the important part — immediately pull whatever the other device last
+  // saved, so opening the app shows current data right away instead of
+  // waiting for the 60s interval or the next local edit. This needs a live
+  // Google session + prior consent; browsers that block silent third-party
+  // auth (notably Safari/iOS) may simply do nothing here, and the user can
+  // still tap "ログイン"/「今すぐ同期」manually in that case.
   if (localStorage.getItem(SYNC_ENABLED_KEY) === "1") {
     try {
-      tokenClient.callback = (resp) => handleTokenResponse(resp, { silent: true });
+      tokenClient.callback = (resp) => {
+        if (handleTokenResponse(resp, { silent: true })) syncNow();
+        renderSyncUI();
+      };
       tokenClient.requestAccessToken({ prompt: "" });
     } catch (e) {
       // ignore — falls back to manual sign-in
