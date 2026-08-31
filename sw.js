@@ -8,10 +8,10 @@
    the newest deploy, even if this file itself hasn't changed. Bumping
    CACHE_VERSION is still good practice (it prunes old cache entries) but is
    no longer required just to ship an update. */
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const CACHE_NAME = `yoshi-health-tracker-${CACHE_VERSION}`;
 
-const APP_SHELL = ["./", "./index.html", "./css/style.css", "./js/app.js", "./manifest.json"];
+const APP_SHELL = ["./", "./index.html", "./css/style.css", "./js/app.js", "./js/sync.js", "./manifest.json"];
 const STATIC_ASSETS = ["./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 
 const SHELL_PATHS = new Set(APP_SHELL.map((p) => new URL(p, self.location).pathname));
