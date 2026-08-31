@@ -16,6 +16,7 @@ const DEFAULT_STATE = {
 
 let state = loadState();
 let weightChartRange = "all"; // "30" | "90" | "180" | "all"
+let trendRange = "30"; // "7" | "30" | "90" | "all"
 
 // -------------------------------------------------------------------------
 // Storage
@@ -64,6 +65,12 @@ function fmtDate(dateStr) {
   return `${Number(m)}/${Number(d)}`;
 }
 
+// Format a Date object as a local YYYY-MM-DD string (no UTC conversion —
+// unlike todayStr(), this is meant for dates already constructed in local time).
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // -------------------------------------------------------------------------
 // Tabs
 // -------------------------------------------------------------------------
@@ -83,6 +90,7 @@ function switchTab(tab) {
   if (tab === "meals") renderMeals();
   if (tab === "workouts") renderWorkouts();
   if (tab === "weight") renderWeight();
+  if (tab === "trends") renderTrends();
   if (tab === "settings") renderSettings();
 }
 
@@ -651,6 +659,316 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
 }
 
 // -------------------------------------------------------------------------
+// Trends (rule-based analysis over the recorded data)
+// -------------------------------------------------------------------------
+function initTrends() {
+  document.getElementById("trendRangeGroup").addEventListener("click", (e) => {
+    const btn = e.target.closest(".range-btn");
+    if (!btn) return;
+    trendRange = btn.dataset.range;
+    document
+      .querySelectorAll("#trendRangeGroup .range-btn")
+      .forEach((b) => b.classList.toggle("active", b === btn));
+    renderTrends();
+  });
+}
+
+// Every calendar date string from the earliest record (or N days back) through today.
+function trendPeriodDates(rangeKey) {
+  const end = todayStr();
+  let startStr;
+  if (rangeKey === "all") {
+    const allDates = [
+      ...state.meals.map((m) => m.date),
+      ...state.workouts.map((w) => w.date),
+      ...state.weightLogs.map((l) => l.date),
+    ];
+    startStr = allDates.length ? allDates.reduce((a, b) => (a < b ? a : b)) : end;
+  } else {
+    const d = new Date(end + "T00:00:00");
+    d.setDate(d.getDate() - (Number(rangeKey) - 1));
+    startStr = ymd(d);
+  }
+  const dates = [];
+  const cur = new Date(startStr + "T00:00:00");
+  const endD = new Date(end + "T00:00:00");
+  while (cur <= endD) {
+    dates.push(ymd(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+function computeTrendMetrics(rangeKey) {
+  const dates = trendPeriodDates(rangeKey);
+
+  let loggedMealDays = 0;
+  let workoutDays = 0;
+  let sumTargetCal = 0;
+  let sumActualCal = 0;
+  let sumTargetProtein = 0;
+  let sumActualProtein = 0;
+  let targetedDays = 0;
+  const weeklyBuckets = []; // [{label, pct}] averaged protein % per 7-day chunk
+
+  let bucketSumPct = 0;
+  let bucketCount = 0;
+  let bucketStart = dates[0];
+
+  dates.forEach((date, i) => {
+    const dayMeals = state.meals.filter((m) => m.date === date);
+    const hasMeal = dayMeals.length > 0;
+    if (hasMeal) loggedMealDays++;
+    if (state.workouts.some((w) => w.date === date)) workoutDays++;
+
+    const totalCal = dayMeals.reduce((s, m) => s + (Number(m.calories) || 0), 0);
+    const totalProtein = dayMeals.reduce((s, m) => s + (Number(m.protein) || 0), 0);
+
+    const weightEntry = getWeightAsOf(date);
+    const targets = state.profile && weightEntry ? computeTargets(state.profile, weightEntry.weight) : null;
+
+    if (targets && hasMeal) {
+      targetedDays++;
+      sumTargetCal += targets.calories;
+      sumActualCal += totalCal;
+      sumTargetProtein += targets.protein;
+      sumActualProtein += totalProtein;
+
+      bucketSumPct += (totalProtein / targets.protein) * 100;
+      bucketCount++;
+    }
+
+    const isWeekEnd = (i + 1) % 7 === 0 || i === dates.length - 1;
+    if (isWeekEnd) {
+      if (bucketCount > 0) {
+        weeklyBuckets.push({ label: `${fmtDate(bucketStart)}〜${fmtDate(date)}`, pct: Math.round(bucketSumPct / bucketCount) });
+      }
+      bucketSumPct = 0;
+      bucketCount = 0;
+      bucketStart = dates[i + 1];
+    }
+  });
+
+  const avgCaloriePct = targetedDays > 0 ? Math.round((sumActualCal / sumTargetCal) * 100) : null;
+  const avgProteinPct = targetedDays > 0 ? Math.round((sumActualProtein / sumTargetProtein) * 100) : null;
+  const avgCalDiff = targetedDays > 0 ? Math.round(sumTargetCal / targetedDays - sumActualCal / targetedDays) : null;
+  const avgProteinDiff =
+    targetedDays > 0 ? Math.round(sumTargetProtein / targetedDays - sumActualProtein / targetedDays) : null;
+
+  // Weight pace: kg/week between the first and last weigh-in inside the period.
+  const periodWeights = state.weightLogs
+    .filter((l) => l.date >= dates[0] && l.date <= dates[dates.length - 1])
+    .sort((a, b) => a.date.localeCompare(b.date));
+  let weeklyRate = null;
+  if (periodWeights.length >= 2) {
+    const first = periodWeights[0];
+    const last = periodWeights[periodWeights.length - 1];
+    const days = (new Date(last.date) - new Date(first.date)) / 86400000;
+    if (days > 0) weeklyRate = +(((last.weight - first.weight) / days) * 7).toFixed(2);
+  }
+
+  return {
+    totalDays: dates.length,
+    loggedMealDays,
+    workoutDays,
+    avgCaloriePct,
+    avgProteinPct,
+    avgCalDiff,
+    avgProteinDiff,
+    weeklyRate,
+    weeklyBuckets,
+    hasAnyData: loggedMealDays > 0 || workoutDays > 0 || periodWeights.length > 0,
+  };
+}
+
+function generateInsights(m) {
+  const insights = [];
+
+  if (m.totalDays > 0 && m.loggedMealDays / m.totalDays < 0.5) {
+    insights.push({
+      tone: "info",
+      text: `食事の記録日数が${m.loggedMealDays}/${m.totalDays}日と少なめです。記録が増えるほど、この傾向分析の精度も上がります。`,
+    });
+  }
+
+  if (m.avgCaloriePct !== null) {
+    if (m.avgCaloriePct < 90) {
+      insights.push({
+        tone: "warning",
+        text: `平均カロリー摂取が目標の${m.avgCaloriePct}%です。体重を増やすには、あと1日${m.avgCalDiff}kcalほど意識して増やすとペースが安定しそうです。`,
+      });
+    } else if (m.avgCaloriePct <= 115) {
+      insights.push({ tone: "good", text: `カロリー摂取は目標にほぼ沿えています(平均${m.avgCaloriePct}%)。このペースを継続しましょう。` });
+    } else {
+      insights.push({
+        tone: "warning",
+        text: `平均カロリーが目標を大きく超えています(平均${m.avgCaloriePct}%)。増量ペースが早すぎると体脂肪の増加が大きくなりやすいので、少し抑えるのも一案です。`,
+      });
+    }
+  }
+
+  if (m.avgProteinPct !== null) {
+    if (m.avgProteinPct < 90) {
+      insights.push({
+        tone: "warning",
+        text: `たんぱく質摂取が目標(体重×2g)の${m.avgProteinPct}%にとどまっています。あと1日${m.avgProteinDiff}gほど、プロテインや高たんぱく食品を追加してみましょう。`,
+      });
+    } else {
+      insights.push({ tone: "good", text: `たんぱく質は目標をしっかり満たせています(平均${m.avgProteinPct}%)。` });
+    }
+  }
+
+  if (m.weeklyRate !== null) {
+    if (m.weeklyRate < 0.1) {
+      insights.push({
+        tone: "warning",
+        text: `体重の増加ペースが週${m.weeklyRate >= 0 ? "+" : ""}${m.weeklyRate}kgとゆっくりです。増量を優先するなら、設定タブの「カロリー上乗せ」を少し増やすと良いかもしれません。`,
+      });
+    } else if (m.weeklyRate <= 0.5) {
+      insights.push({ tone: "good", text: `体重は週+${m.weeklyRate}kgペースで増えています。筋肉中心で増量する良いペースです。` });
+    } else {
+      insights.push({
+        tone: "warning",
+        text: `体重が週+${m.weeklyRate}kgペースで急に増えています。体脂肪の増加が大きくなっている可能性があるので、カロリーの上乗せをやや抑えるのも一案です。`,
+      });
+    }
+  } else if (m.totalDays > 7) {
+    insights.push({ tone: "info", text: "この期間の体重記録が2件未満のため、増減ペースを計算できません。体重タブで定期的に記録してみましょう。" });
+  }
+
+  const expectedWorkoutDays = Math.round((m.totalDays / 7) * 2); // ~2x/week baseline
+  if (m.totalDays >= 7) {
+    if (m.workoutDays < expectedWorkoutDays) {
+      insights.push({
+        tone: "warning",
+        text: `この期間のトレーニング日数は${m.workoutDays}日でした。筋肉量を増やすには週2〜3回を目安に継続すると効果が出やすいです。`,
+      });
+    } else {
+      insights.push({ tone: "good", text: `トレーニングは${m.workoutDays}日実施できています。良いペースです。` });
+    }
+  }
+
+  if (insights.length === 0) {
+    insights.push({ tone: "info", text: "記録が増えると、ここに気づきが表示されます。" });
+  }
+
+  return insights;
+}
+
+function renderTrends() {
+  const metrics = computeTrendMetrics(trendRange);
+  const emptyEl = document.getElementById("trendsEmpty");
+  const contentEl = document.getElementById("trendsContent");
+
+  if (!metrics.hasAnyData) {
+    emptyEl.classList.remove("hidden");
+    contentEl.classList.add("hidden");
+    return;
+  }
+  emptyEl.classList.add("hidden");
+  contentEl.classList.remove("hidden");
+
+  const statsEl = document.getElementById("trendStats");
+  const pct = (v) => (v === null ? "記録不足" : `${v}%`);
+  statsEl.innerHTML = `
+    <div class="ts-item"><div class="k">平均カロリー達成率</div><div class="v">${pct(metrics.avgCaloriePct)}</div></div>
+    <div class="ts-item"><div class="k">平均たんぱく質達成率</div><div class="v">${pct(metrics.avgProteinPct)}</div></div>
+    <div class="ts-item"><div class="k">体重ペース(週あたり)</div><div class="v">${metrics.weeklyRate === null ? "記録不足" : `${metrics.weeklyRate >= 0 ? "+" : ""}${metrics.weeklyRate}kg`}</div></div>
+    <div class="ts-item"><div class="k">食事記録日数</div><div class="v">${metrics.loggedMealDays}/${metrics.totalDays}日</div></div>
+    <div class="ts-item"><div class="k">トレーニング日数</div><div class="v">${metrics.workoutDays}/${metrics.totalDays}日</div></div>
+  `;
+
+  renderTrendChart("trendChart", metrics.weeklyBuckets);
+
+  const insightsEl = document.getElementById("trendInsights");
+  const icons = { good: "✅", warning: "⚠️", info: "💡" };
+  insightsEl.innerHTML = generateInsights(metrics)
+    .map((i) => `<div class="insight-item ${i.tone}"><span class="icon">${icons[i.tone]}</span><span>${escapeHTML(i.text)}</span></div>`)
+    .join("");
+}
+
+function renderTrendChart(canvasId, buckets) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = canvas.clientWidth || canvas.parentElement.clientWidth || 320;
+  const cssHeight = Number(canvas.getAttribute("height")) || 160;
+  canvas.width = cssWidth * dpr;
+  canvas.height = cssHeight * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+  const styles = getComputedStyle(document.documentElement);
+  const primary = styles.getPropertyValue("--primary").trim() || "#1f7a5c";
+  const orange = styles.getPropertyValue("--accent-orange").trim() || "#e0793a";
+  const muted = styles.getPropertyValue("--text-muted").trim() || "#888";
+  const border = styles.getPropertyValue("--border").trim() || "#ddd";
+
+  if (buckets.length === 0) {
+    ctx.fillStyle = muted;
+    ctx.font = "12px sans-serif";
+    ctx.fillText("食事の記録が足りないため、週別グラフを表示できません。", 8, cssHeight / 2);
+    return;
+  }
+
+  const padL = 34;
+  const padR = 10;
+  const padT = 12;
+  const padB = 28;
+  const plotW = cssWidth - padL - padR;
+  const plotH = cssHeight - padT - padB;
+
+  const maxVal = Math.max(120, ...buckets.map((b) => b.pct));
+  const y = (v) => padT + plotH - (v / maxVal) * plotH;
+
+  // gridlines
+  ctx.strokeStyle = border;
+  ctx.fillStyle = muted;
+  ctx.font = "10px sans-serif";
+  ctx.lineWidth = 1;
+  [0, 50, 100].forEach((v) => {
+    if (v > maxVal) return;
+    const yy = y(v);
+    ctx.beginPath();
+    ctx.moveTo(padL, yy);
+    ctx.lineTo(cssWidth - padR, yy);
+    ctx.stroke();
+    ctx.fillText(String(v), 2, yy + 3);
+  });
+
+  // 100% target dashed line
+  ctx.save();
+  ctx.strokeStyle = orange;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(padL, y(100));
+  ctx.lineTo(cssWidth - padR, y(100));
+  ctx.stroke();
+  ctx.restore();
+
+  // bars
+  const slot = plotW / buckets.length;
+  const barW = Math.min(28, slot * 0.55);
+  ctx.fillStyle = primary;
+  buckets.forEach((b, i) => {
+    const cx = padL + slot * i + slot / 2;
+    const barY = y(b.pct);
+    ctx.fillRect(cx - barW / 2, barY, barW, padT + plotH - barY);
+  });
+
+  // x labels (first/last only to avoid crowding)
+  ctx.fillStyle = muted;
+  ctx.font = "10px sans-serif";
+  const firstLabel = buckets[0].label;
+  ctx.fillText(firstLabel, padL, cssHeight - 6);
+  if (buckets.length > 1) {
+    const lastLabel = buckets[buckets.length - 1].label;
+    ctx.fillText(lastLabel, cssWidth - padR - ctx.measureText(lastLabel).width, cssHeight - 6);
+  }
+}
+
+// -------------------------------------------------------------------------
 // Settings
 // -------------------------------------------------------------------------
 function initSettings() {
@@ -771,6 +1089,7 @@ function renderAll() {
   renderMeals();
   renderWorkouts();
   renderWeight();
+  renderTrends();
   renderSettings();
 }
 
@@ -780,12 +1099,14 @@ function init() {
   initMeals();
   initWorkouts();
   initWeight();
+  initTrends();
   initSettings();
   renderAll();
   window.addEventListener("resize", () => {
     renderWeightChart("weightChart", state.weightLogs, 30);
     const days = weightChartRange === "all" ? null : Number(weightChartRange);
     renderWeightChart("weightChartFull", state.weightLogs, days, state.profile && state.profile.targetWeight);
+    renderTrendChart("trendChart", computeTrendMetrics(trendRange).weeklyBuckets);
   });
 }
 
