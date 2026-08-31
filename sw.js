@@ -8,7 +8,7 @@
    the newest deploy, even if this file itself hasn't changed. Bumping
    CACHE_VERSION is still good practice (it prunes old cache entries) but is
    no longer required just to ship an update. */
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `yoshi-health-tracker-${CACHE_VERSION}`;
 
 const APP_SHELL = ["./", "./index.html", "./css/style.css", "./js/app.js", "./js/sync.js", "./manifest.json"];
@@ -50,10 +50,15 @@ self.addEventListener("fetch", (event) => {
   const isShell = event.request.mode === "navigate" || SHELL_PATHS.has(url.pathname);
 
   if (isShell) {
-    // Network-first: always try to get the latest deploy. Cache it for
-    // offline use, and only fall back to the cache when the network fails.
+    // Network-first: always try to get the latest deploy. `cache: "reload"`
+    // is important here — without it, `fetch()` can still be satisfied by
+    // the browser's own HTTP cache (GitHub Pages serves these with a
+    // Cache-Control max-age), silently defeating "network-first" even
+    // though this handler never touches the stale Cache Storage entry.
+    // Cache the fresh response for offline use, and only fall back to the
+    // Cache Storage copy when the network truly fails.
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "reload" })
         .then((response) => {
           if (response && response.ok) {
             const clone = response.clone();
