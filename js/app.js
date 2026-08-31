@@ -1134,8 +1134,19 @@ document.addEventListener("DOMContentLoaded", init);
 // just caches the app shell itself). Safe to skip if unsupported (e.g. file://).
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch((err) => {
-      console.warn("Service worker registration failed:", err);
+    navigator.serviceWorker
+      .register("sw.js")
+      .then((reg) => reg.update().catch(() => {})) // check for a newer sw.js on every load
+      .catch((err) => console.warn("Service worker registration failed:", err));
+
+    // When a new service worker takes over (after an update), reload once so
+    // the page picks up the latest index.html/js/css instead of staying on
+    // whatever was loaded before the update. Guarded so it only fires once.
+    let reloadedForUpdate = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloadedForUpdate) return;
+      reloadedForUpdate = true;
+      window.location.reload();
     });
   });
 }
