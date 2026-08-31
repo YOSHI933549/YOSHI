@@ -143,9 +143,51 @@
       <h3>種目を追加</h3>
       <div class="field-row">
         <label>種目名
-          <input type="text" id="exerciseName" placeholder="例: ベンチプレス" required>
+          <select id="exerciseSelect">
+            <optgroup label="胸">
+              <option value="ベンチプレス">ベンチプレス</option>
+              <option value="インクラインベンチプレス">インクラインベンチプレス</option>
+              <option value="ダンベルフライ">ダンベルフライ</option>
+              <option value="腕立て伏せ(プッシュアップ)">腕立て伏せ(プッシュアップ)</option>
+            </optgroup>
+            <optgroup label="背中">
+              <option value="デッドリフト">デッドリフト</option>
+              <option value="懸垂(チンニング)">懸垂(チンニング)</option>
+              <option value="ラットプルダウン">ラットプルダウン</option>
+              <option value="ベントオーバーロウ">ベントオーバーロウ</option>
+              <option value="ダンベルロウ">ダンベルロウ</option>
+            </optgroup>
+            <optgroup label="脚">
+              <option value="スクワット">スクワット</option>
+              <option value="レッグプレス">レッグプレス</option>
+              <option value="レッグエクステンション">レッグエクステンション</option>
+              <option value="レッグカール">レッグカール</option>
+              <option value="ランジ">ランジ</option>
+              <option value="カーフレイズ">カーフレイズ</option>
+            </optgroup>
+            <optgroup label="肩">
+              <option value="ショルダープレス">ショルダープレス</option>
+              <option value="サイドレイズ">サイドレイズ</option>
+              <option value="リアレイズ">リアレイズ</option>
+            </optgroup>
+            <optgroup label="腕">
+              <option value="アームカール(バイセップスカール)">アームカール(バイセップスカール)</option>
+              <option value="トライセプスエクステンション">トライセプスエクステンション</option>
+              <option value="ディップス">ディップス</option>
+            </optgroup>
+            <optgroup label="体幹・腹筋">
+              <option value="プランク">プランク</option>
+              <option value="クランチ(腹筋)">クランチ(腹筋)</option>
+              <option value="レッグレイズ">レッグレイズ</option>
+            </optgroup>
+            <option value="__custom__">＋ その他(自由入力)</option>
+          </select>
         </label>
       </div>
+      <label id="exerciseCustomField" class="hidden">
+        種目名(自由入力)
+        <input type="text" id="exerciseCustomName" placeholder="例: ケーブルクロスオーバー">
+      </label>
       <div id="setRows"></div>
       <button type="button" class="btn ghost" id="addSetRow">＋ セットを追加</button>
       <label>メモ

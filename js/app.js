@@ -357,6 +357,16 @@ function initWorkouts() {
   addSetRow();
   addSetRow();
 
+  const exerciseSelect = document.getElementById("exerciseSelect");
+  const customField = document.getElementById("exerciseCustomField");
+  const customInput = document.getElementById("exerciseCustomName");
+
+  exerciseSelect.addEventListener("change", () => {
+    const isCustom = exerciseSelect.value === "__custom__";
+    customField.classList.toggle("hidden", !isCustom);
+    if (isCustom) customInput.focus();
+  });
+
   document.getElementById("workoutForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const sets = [...setRows.querySelectorAll(".set-row")]
@@ -366,17 +376,24 @@ function initWorkouts() {
       }))
       .filter((s) => s.reps > 0 || s.weight > 0);
 
+    const name =
+      exerciseSelect.value === "__custom__" ? customInput.value.trim() : exerciseSelect.value;
+
     const workout = {
       id: uid(),
       date: dateInput.value || todayStr(),
-      name: document.getElementById("exerciseName").value.trim(),
+      name,
       sets,
       memo: document.getElementById("workoutMemo").value.trim(),
     };
-    if (!workout.name) return;
+    if (!workout.name) {
+      if (exerciseSelect.value === "__custom__") customInput.focus();
+      return;
+    }
     state.workouts.push(workout);
     saveState();
     e.target.reset();
+    customField.classList.add("hidden");
     setRows.innerHTML = "";
     addSetRow();
     addSetRow();
