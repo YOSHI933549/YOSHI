@@ -582,6 +582,9 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   const primary = styles.getPropertyValue("--primary").trim() || "#1f7a5c";
   const muted = styles.getPropertyValue("--text-muted").trim() || "#888";
   const border = styles.getPropertyValue("--border").trim() || "#ddd";
+  const text = styles.getPropertyValue("--text").trim() || "#1a2420";
+  const surfaceAlt = styles.getPropertyValue("--surface-alt").trim() || "#eef3ee";
+  const orange = styles.getPropertyValue("--accent-orange").trim() || "#e0793a";
 
   if (windowed.length === 0) {
     ctx.fillStyle = muted;
@@ -596,10 +599,32 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
     return;
   }
 
-  const padL = 34;
-  const padR = 10;
-  const padT = 12;
-  const padB = 18;
+  // Headline callout (current value + date), top-right — the chart reads
+  // "here's where you are" first, "here's the trend" second.
+  const latest = windowed[windowed.length - 1];
+  const calloutH = Math.min(44, cssHeight * 0.26);
+  const calloutW = Math.min(112, cssWidth * 0.42);
+  const calloutX = cssWidth - calloutW;
+  const calloutY = 2;
+  drawRoundedRect(ctx, calloutX, calloutY, calloutW, calloutH, 10);
+  ctx.fillStyle = surfaceAlt;
+  ctx.fill();
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.textAlign = "right";
+  ctx.fillStyle = text;
+  ctx.font = "bold 18px sans-serif";
+  ctx.fillText(`${latest.weight}kg`, calloutX + calloutW - 10, calloutY + calloutH * 0.52);
+  ctx.font = "10px sans-serif";
+  ctx.fillStyle = muted;
+  ctx.fillText(fmtDate(latest.date), calloutX + calloutW - 10, calloutY + calloutH - 8);
+  ctx.textAlign = "left";
+
+  const padL = 8;
+  const padR = 36;
+  const padT = calloutY + calloutH + 20;
+  const padB = 20;
   const plotW = cssWidth - padL - padR;
   const plotH = cssHeight - padT - padB;
 
@@ -618,7 +643,7 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   const x = (i) => padL + (plotW * i) / (windowed.length - 1);
   const y = (w) => padT + plotH - ((w - min) / (max - min)) * plotH;
 
-  // gridlines + labels
+  // horizontal gridlines + y-axis labels on the right
   ctx.strokeStyle = border;
   ctx.fillStyle = muted;
   ctx.font = "10px sans-serif";
@@ -631,18 +656,42 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
     ctx.moveTo(padL, yy);
     ctx.lineTo(cssWidth - padR, yy);
     ctx.stroke();
-    ctx.fillText(val.toFixed(1), 2, yy + 3);
+    ctx.fillText(val.toFixed(1), cssWidth - padR + 6, yy + 3);
   }
 
-  // date labels (first/last)
-  ctx.fillText(fmtDate(windowed[0].date), padL, cssHeight - 4);
-  const lastLabel = fmtDate(windowed[windowed.length - 1].date);
-  ctx.fillText(lastLabel, cssWidth - padR - ctx.measureText(lastLabel).width, cssHeight - 4);
+  // dashed vertical gridlines + evenly-spaced date labels along the bottom
+  const labelCount = Math.min(5, windowed.length);
+  const labelIndices = [...new Set(
+    Array.from({ length: labelCount }, (_, i) =>
+      labelCount === 1 ? 0 : Math.round((i * (windowed.length - 1)) / (labelCount - 1))
+    )
+  )];
+  ctx.save();
+  ctx.setLineDash([2, 3]);
+  ctx.strokeStyle = border;
+  labelIndices.forEach((i) => {
+    const px = x(i);
+    ctx.beginPath();
+    ctx.moveTo(px, padT);
+    ctx.lineTo(px, padT + plotH);
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  ctx.fillStyle = muted;
+  ctx.font = "10px sans-serif";
+  labelIndices.forEach((i, idx) => {
+    const label = fmtDate(windowed[i].date);
+    const w = ctx.measureText(label).width;
+    let tx = x(i) - w / 2;
+    if (idx === 0) tx = Math.max(tx, padL);
+    if (idx === labelIndices.length - 1) tx = Math.min(tx, cssWidth - padR - w);
+    ctx.fillText(label, tx, cssHeight - 4);
+  });
 
   // target weight reference line
   if (targetWeight) {
     const ty = y(Number(targetWeight));
-    const orange = styles.getPropertyValue("--accent-orange").trim() || "#e0793a";
     ctx.save();
     ctx.strokeStyle = orange;
     ctx.setLineDash([4, 4]);
@@ -668,13 +717,30 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // points
-  ctx.fillStyle = primary;
+  // points — open circles (colored ring, light fill) rather than solid dots
   windowed.forEach((l, i) => {
     ctx.beginPath();
-    ctx.arc(x(i), y(l.weight), 2.5, 0, Math.PI * 2);
+    ctx.arc(x(i), y(l.weight), 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = surfaceAlt;
     ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = primary;
+    ctx.stroke();
   });
+}
+
+function drawRoundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, w, h, r);
+    return;
+  }
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 // -------------------------------------------------------------------------
