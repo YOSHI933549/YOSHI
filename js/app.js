@@ -15,6 +15,7 @@ const DEFAULT_STATE = {
 };
 
 let state = loadState();
+let weightChartRange = "all"; // "30" | "90" | "180" | "all"
 
 // -------------------------------------------------------------------------
 // Storage
@@ -456,6 +457,47 @@ function initWeight() {
     saveState();
     renderWeight();
   });
+
+  document.getElementById("weightRangeGroup").addEventListener("click", (e) => {
+    const btn = e.target.closest(".range-btn");
+    if (!btn) return;
+    weightChartRange = btn.dataset.range;
+    document
+      .querySelectorAll("#weightRangeGroup .range-btn")
+      .forEach((b) => b.classList.toggle("active", b === btn));
+    renderWeight();
+  });
+}
+
+function renderWeightTrend(logs) {
+  const el = document.getElementById("weightTrend");
+  const sorted = [...logs].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  const first = sorted[0];
+  const latest = sorted[sorted.length - 1];
+  const diff = +(latest.weight - first.weight).toFixed(1);
+  const diffClass = diff > 0 ? "up" : diff < 0 ? "down" : "";
+  const diffText = diff === 0 ? "±0kg" : diff > 0 ? `+${diff}kg` : `${diff}kg`;
+
+  const parts = [
+    `<span>現在 <b>${latest.weight}kg</b></span>`,
+    `<span>記録開始 ${first.weight}kg(${fmtDate(first.date)})</span>`,
+    `<span>増減 <b class="${diffClass}">${diffText}</b></span>`,
+    `<span>記録数 ${sorted.length}件</span>`,
+  ];
+
+  const targetWeight = state.profile && state.profile.targetWeight;
+  if (targetWeight) {
+    const remain = +(targetWeight - latest.weight).toFixed(1);
+    parts.push(
+      `<span>目標 ${targetWeight}kg まで ${remain > 0 ? `あと ${remain}kg` : "達成 🎉"}</span>`
+    );
+  }
+
+  el.innerHTML = parts.join("");
 }
 
 function renderWeight() {
@@ -483,13 +525,23 @@ function renderWeight() {
         .join("")
     : `<div class="empty-state">まだ体重の記録がありません。</div>`;
 
-  renderWeightChart("weightChartFull", state.weightLogs, 90);
+  renderWeightTrend(state.weightLogs);
+  const days = weightChartRange === "all" ? null : Number(weightChartRange);
+  renderWeightChart("weightChartFull", state.weightLogs, days, state.profile && state.profile.targetWeight);
 }
 
-function renderWeightChart(canvasId, logs, days) {
+function renderWeightChart(canvasId, logs, days, targetWeight) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const sorted = [...logs].sort((a, b) => a.date.localeCompare(b.date)).slice(-days);
+  const sorted = [...logs].sort((a, b) => a.date.localeCompare(b.date));
+  let windowed = sorted;
+  if (days && sorted.length > 0) {
+    const anchor = new Date(sorted[sorted.length - 1].date + "T00:00:00");
+    anchor.setDate(anchor.getDate() - days);
+    const cutoff = anchor.toISOString().slice(0, 10);
+    windowed = sorted.filter((l) => l.date >= cutoff);
+    if (windowed.length < 2 && sorted.length >= 2) windowed = sorted.slice(-2); // always show a line if 2+ records exist
+  }
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.clientWidth || canvas.parentElement.clientWidth || 320;
   const cssHeight = Number(canvas.getAttribute("height")) || 140;
@@ -504,16 +556,16 @@ function renderWeightChart(canvasId, logs, days) {
   const muted = styles.getPropertyValue("--text-muted").trim() || "#888";
   const border = styles.getPropertyValue("--border").trim() || "#ddd";
 
-  if (sorted.length === 0) {
+  if (windowed.length === 0) {
     ctx.fillStyle = muted;
     ctx.font = "12px sans-serif";
     ctx.fillText("体重の記録がありません", 8, cssHeight / 2);
     return;
   }
-  if (sorted.length === 1) {
+  if (windowed.length === 1) {
     ctx.fillStyle = muted;
     ctx.font = "12px sans-serif";
-    ctx.fillText(`${sorted[0].weight}kg (${fmtDate(sorted[0].date)}) — 記録を増やすとグラフが表示されます`, 8, cssHeight / 2);
+    ctx.fillText(`${windowed[0].weight}kg (${fmtDate(windowed[0].date)}) — 記録を増やすとグラフが表示されます`, 8, cssHeight / 2);
     return;
   }
 
@@ -524,7 +576,8 @@ function renderWeightChart(canvasId, logs, days) {
   const plotW = cssWidth - padL - padR;
   const plotH = cssHeight - padT - padB;
 
-  const weights = sorted.map((l) => l.weight);
+  const weights = windowed.map((l) => l.weight);
+  if (targetWeight) weights.push(Number(targetWeight));
   let min = Math.min(...weights);
   let max = Math.max(...weights);
   if (min === max) {
@@ -535,7 +588,7 @@ function renderWeightChart(canvasId, logs, days) {
   min -= pad;
   max += pad;
 
-  const x = (i) => padL + (plotW * i) / (sorted.length - 1);
+  const x = (i) => padL + (plotW * i) / (windowed.length - 1);
   const y = (w) => padT + plotH - ((w - min) / (max - min)) * plotH;
 
   // gridlines + labels
@@ -555,13 +608,30 @@ function renderWeightChart(canvasId, logs, days) {
   }
 
   // date labels (first/last)
-  ctx.fillText(fmtDate(sorted[0].date), padL, cssHeight - 4);
-  const lastLabel = fmtDate(sorted[sorted.length - 1].date);
+  ctx.fillText(fmtDate(windowed[0].date), padL, cssHeight - 4);
+  const lastLabel = fmtDate(windowed[windowed.length - 1].date);
   ctx.fillText(lastLabel, cssWidth - padR - ctx.measureText(lastLabel).width, cssHeight - 4);
+
+  // target weight reference line
+  if (targetWeight) {
+    const ty = y(Number(targetWeight));
+    const orange = styles.getPropertyValue("--accent-orange").trim() || "#e0793a";
+    ctx.save();
+    ctx.strokeStyle = orange;
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(padL, ty);
+    ctx.lineTo(cssWidth - padR, ty);
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = orange;
+    ctx.fillText(`目標 ${targetWeight}kg`, padL + 4, ty - 4);
+  }
 
   // line
   ctx.beginPath();
-  sorted.forEach((l, i) => {
+  windowed.forEach((l, i) => {
     const px = x(i);
     const py = y(l.weight);
     if (i === 0) ctx.moveTo(px, py);
@@ -573,7 +643,7 @@ function renderWeightChart(canvasId, logs, days) {
 
   // points
   ctx.fillStyle = primary;
-  sorted.forEach((l, i) => {
+  windowed.forEach((l, i) => {
     ctx.beginPath();
     ctx.arc(x(i), y(l.weight), 2.5, 0, Math.PI * 2);
     ctx.fill();
@@ -714,7 +784,8 @@ function init() {
   renderAll();
   window.addEventListener("resize", () => {
     renderWeightChart("weightChart", state.weightLogs, 30);
-    renderWeightChart("weightChartFull", state.weightLogs, 90);
+    const days = weightChartRange === "all" ? null : Number(weightChartRange);
+    renderWeightChart("weightChartFull", state.weightLogs, days, state.profile && state.profile.targetWeight);
   });
 }
 

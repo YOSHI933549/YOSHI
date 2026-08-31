@@ -169,7 +169,16 @@
     </form>
 
     <div class="card">
-      <h3>推移グラフ</h3>
+      <div class="chart-head">
+        <h3>推移グラフ</h3>
+        <div class="range-group" id="weightRangeGroup">
+          <button type="button" class="range-btn" data-range="30">1ヶ月</button>
+          <button type="button" class="range-btn" data-range="90">3ヶ月</button>
+          <button type="button" class="range-btn" data-range="180">6ヶ月</button>
+          <button type="button" class="range-btn active" data-range="all">全期間</button>
+        </div>
+      </div>
+      <div id="weightTrend" class="weight-trend"></div>
       <canvas id="weightChartFull" height="220"></canvas>
     </div>
 
