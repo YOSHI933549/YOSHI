@@ -58,9 +58,17 @@ function initN8nSync() {
   fetchBtn.addEventListener("click", () => fetchFromN8n(true));
 
   if (saved) fetchFromN8n(false);
+
+  // Poll fairly aggressively while the app is open/visible so a weigh-in
+  // shows up as soon as possible after the iPhone side posts it — but pause
+  // entirely while backgrounded so it doesn't run forever in a hidden tab.
   setInterval(() => {
-    if (getN8nFetchUrl()) fetchFromN8n(false);
-  }, 300000); // 5分ごと
+    if (getN8nFetchUrl() && document.visibilityState === "visible") fetchFromN8n(false);
+  }, 20000); // 20秒ごと(表示中のみ)
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && getN8nFetchUrl()) fetchFromN8n(false);
+  });
 }
 
 async function fetchFromN8n(showToast) {
