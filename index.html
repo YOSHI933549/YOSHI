@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>YOSHI Health &amp; Bulk-up Tracker</title>
+<link rel="stylesheet" href="css/style.css">
+<meta name="theme-color" content="#1f7a5c">
+
+<!-- PWA / ホーム画面追加用 -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="健康トラッカー">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <span class="brand-mark">💪</span>
+    <div>
+      <h1>健康・筋トレ・増量トラッカー</h1>
+      <p class="tagline">①健康 ②筋肉トレーニング ③体重を上げる ― 3つの目標を1つの記録で管理</p>
+    </div>
+  </div>
+</header>
+
+<nav class="tabbar" id="tabbar">
+  <button class="tab-btn active" data-tab="dashboard">📊<span>今日</span></button>
+  <button class="tab-btn" data-tab="meals">🍽️<span>食事</span></button>
+  <button class="tab-btn" data-tab="workouts">🏋️<span>筋トレ</span></button>
+  <button class="tab-btn" data-tab="weight">⚖️<span>体重</span></button>
+  <button class="tab-btn" data-tab="settings">⚙️<span>設定</span></button>
+</nav>
+
+<main id="app">
+
+  <!-- ============ DASHBOARD ============ -->
+  <section class="tab-panel active" id="panel-dashboard">
+    <div class="panel-head">
+      <h2>今日のサマリー</h2>
+      <input type="date" id="dashboardDate">
+    </div>
+
+    <div id="noProfileNotice" class="notice hidden">
+      <p>まずは <b>設定</b> タブで身長・年齢・性別・現在の体重を入力してください。目標カロリー・たんぱく質などを自動計算します。</p>
+      <button class="btn" data-goto="settings">設定へ移動</button>
+    </div>
+
+    <div id="dashboardContent">
+      <div class="card-grid" id="macroCards"></div>
+
+      <div class="card">
+        <h3>体重推移(直近)</h3>
+        <canvas id="weightChart" height="140"></canvas>
+      </div>
+
+      <div class="card">
+        <h3>今日の食事</h3>
+        <div id="todayMealsList" class="list"></div>
+      </div>
+
+      <div class="card">
+        <h3>今日のトレーニング</h3>
+        <div id="todayWorkoutList" class="list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MEALS ============ -->
+  <section class="tab-panel" id="panel-meals">
+    <div class="panel-head">
+      <h2>食事記録</h2>
+      <input type="date" id="mealsDate">
+    </div>
+
+    <form class="card form" id="mealForm">
+      <h3>食事を追加</h3>
+      <div class="field-row">
+        <label>区分
+          <select id="mealType">
+            <option value="朝食">朝食</option>
+            <option value="昼食">昼食</option>
+            <option value="夕食">夕食</option>
+            <option value="間食">間食・プロテイン</option>
+          </select>
+        </label>
+        <label>時刻
+          <input type="time" id="mealTime">
+        </label>
+      </div>
+
+      <label>メニュー名
+        <input type="text" id="mealName" placeholder="例: 鶏胸肉とごはん" required>
+      </label>
+
+      <label class="photo-field">
+        写真(記録用・任意)
+        <input type="file" id="mealPhoto" accept="image/*" capture="environment">
+      </label>
+      <img id="mealPhotoPreview" class="photo-preview hidden" alt="プレビュー">
+
+      <div class="field-row four">
+        <label>カロリー(kcal)
+          <input type="number" id="mealCalories" min="0" step="1" required>
+        </label>
+        <label>たんぱく質(g)
+          <input type="number" id="mealProtein" min="0" step="0.1" required>
+        </label>
+        <label>脂質(g)
+          <input type="number" id="mealFat" min="0" step="0.1">
+        </label>
+        <label>炭水化物(g)
+          <input type="number" id="mealCarbs" min="0" step="0.1">
+        </label>
+      </div>
+
+      <label>メモ
+        <input type="text" id="mealMemo" placeholder="任意">
+      </label>
+
+      <button type="submit" class="btn primary">追加する</button>
+    </form>
+
+    <div class="card">
+      <h3>記録一覧</h3>
+      <div id="mealsList" class="list"></div>
+    </div>
+  </section>
+
+  <!-- ============ WORKOUTS ============ -->
+  <section class="tab-panel" id="panel-workouts">
+    <div class="panel-head">
+      <h2>筋トレ記録</h2>
+      <input type="date" id="workoutsDate">
+    </div>
+
+    <form class="card form" id="workoutForm">
+      <h3>種目を追加</h3>
+      <div class="field-row">
+        <label>種目名
+          <input type="text" id="exerciseName" placeholder="例: ベンチプレス" required>
+        </label>
+      </div>
+      <div id="setRows"></div>
+      <button type="button" class="btn ghost" id="addSetRow">＋ セットを追加</button>
+      <label>メモ
+        <input type="text" id="workoutMemo" placeholder="任意(体調・フォームの気づきなど)">
+      </label>
+      <button type="submit" class="btn primary">種目を記録</button>
+    </form>
+
+    <div class="card">
+      <h3>記録一覧</h3>
+      <div id="workoutsList" class="list"></div>
+    </div>
+  </section>
+
+  <!-- ============ WEIGHT ============ -->
+  <section class="tab-panel" id="panel-weight">
+    <div class="panel-head">
+      <h2>体重記録</h2>
+    </div>
+
+    <form class="card form" id="weightForm">
+      <div class="field-row">
+        <label>日付
+          <input type="date" id="weightDate" required>
+        </label>
+        <label>体重(kg)
+          <input type="number" id="weightValue" min="0" step="0.1" required>
+        </label>
+      </div>
+      <button type="submit" class="btn primary">記録する</button>
+    </form>
+
+    <div class="card">
+      <div class="chart-head">
+        <h3>推移グラフ</h3>
+        <div class="range-group" id="weightRangeGroup">
+          <button type="button" class="range-btn" data-range="30">1ヶ月</button>
+          <button type="button" class="range-btn" data-range="90">3ヶ月</button>
+          <button type="button" class="range-btn" data-range="180">6ヶ月</button>
+          <button type="button" class="range-btn active" data-range="all">全期間</button>
+        </div>
+      </div>
+      <div id="weightTrend" class="weight-trend"></div>
+      <canvas id="weightChartFull" height="220"></canvas>
+    </div>
+
+    <div class="card">
+      <h3>履歴</h3>
+      <div id="weightList" class="list"></div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="tab-panel" id="panel-settings">
+    <div class="panel-head">
+      <h2>設定 ・ 目標計算</h2>
+    </div>
+
+    <form class="card form" id="profileForm">
+      <h3>プロフィール</h3>
+      <div class="field-row">
+        <label>身長(cm)
+          <input type="number" id="height" min="0" step="0.1" required>
+        </label>
+        <label>年齢
+          <input type="number" id="age" min="0" step="1" required>
+        </label>
+      </div>
+      <div class="field-row">
+        <label>性別
+          <select id="gender">
+            <option value="male">男性</option>
+            <option value="female">女性</option>
+          </select>
+        </label>
+        <label>活動レベル
+          <select id="activity">
+            <option value="1.2">ほぼ座り仕事(運動なし)</option>
+            <option value="1.375">軽い運動(週1-3日)</option>
+            <option value="1.55" selected>中程度の運動(週3-5日・筋トレ含む)</option>
+            <option value="1.725">激しい運動(週6-7日)</option>
+            <option value="1.9">非常に激しい(肉体労働+トレーニング)</option>
+          </select>
+        </label>
+      </div>
+
+      <h3>増量・体づくりの目標設定</h3>
+      <div class="field-row">
+        <label>目標体重(kg・任意)
+          <input type="number" id="targetWeight" min="0" step="0.1">
+        </label>
+        <label>カロリー上乗せ(kcal/日)
+          <input type="number" id="surplus" min="0" step="10" value="400">
+        </label>
+      </div>
+      <p class="hint">体重を上げる(増量)には、消費カロリー(TDEE)にこの分を上乗せしたカロリーを摂取目標にします。目安 +300〜500kcal。</p>
+
+      <div class="field-row">
+        <label>脂質の割合(総カロリーの%)
+          <input type="number" id="fatRatio" min="10" max="40" step="1" value="25">
+        </label>
+      </div>
+      <p class="hint">たんぱく質は自動で <b>体重(kg) × 2g</b> に設定されます。脂質は指定割合、残りを炭水化物に自動配分します。</p>
+
+      <button type="submit" class="btn primary">保存する</button>
+    </form>
+
+    <div class="card" id="targetSummaryCard">
+      <h3>現在の1日の目標</h3>
+      <div id="targetSummary" class="target-summary"></div>
+    </div>
+
+    <div class="card">
+      <h3>データのバックアップ</h3>
+      <p class="hint">このアプリのデータはブラウザ内(localStorage)にのみ保存されます。機種変更やブラウザ変更の前に必ずエクスポートしてください。</p>
+      <div class="field-row">
+        <button type="button" class="btn ghost" id="exportBtn">JSONをエクスポート</button>
+        <label class="btn ghost file-btn">
+          JSONをインポート
+          <input type="file" id="importInput" accept="application/json" class="hidden">
+        </label>
+      </div>
+      <button type="button" class="btn danger" id="resetBtn">全データを削除</button>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
