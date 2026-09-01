@@ -242,6 +242,51 @@ form.form label {
   .field-row.four { grid-template-columns: repeat(4, 1fr); }
 }
 
+.food-add-row {
+  grid-template-columns: 1fr 90px;
+  align-items: end;
+}
+.food-add-row #mealFoodAddBtn {
+  grid-column: 1 / -1;
+  padding: 9px 16px;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+.chip-list.hidden {
+  display: none;
+}
+.food-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 8px 6px 12px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.food-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
 input[type="text"],
 input[type="number"],
 input[type="date"],
