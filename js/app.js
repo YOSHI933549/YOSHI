@@ -601,8 +601,8 @@ function renderWeightTrend(logs) {
   const diffClass = diff > 0 ? "up" : diff < 0 ? "down" : "";
   const diffText = diff === 0 ? "±0kg" : diff > 0 ? `+${diff}kg` : `${diff}kg`;
 
+  // 「現在」の体重はグラフ内の見出しボックスにも出るため、ここでは重複させない
   const parts = [
-    `<span>現在 <b>${latest.weight}kg</b></span>`,
     `<span>記録開始 ${first.weight}kg(${fmtDate(first.date)})</span>`,
     `<span>増減 <b class="${diffClass}">${diffText}</b></span>`,
     `<span>記録数 ${sorted.length}件</span>`,
