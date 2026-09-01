@@ -101,10 +101,10 @@
         <input type="text" id="mealName" placeholder="例: 鶏胸肉とごはん" required>
       </label>
 
-      <div class="field-row">
-        <label>食品から自動計算(任意)
+      <div class="field-row food-add-row">
+        <label>材料を選んで追加(任意・複数可)
           <select id="mealFoodPreset">
-            <option value="">-- 選択しない(下に手入力) --</option>
+            <option value="">-- 食品を選択 --</option>
             <optgroup label="肉・魚">
               <option value="鶏ささみ" data-kcal="105" data-protein="23.9" data-fat="0.8" data-carbs="0.1">鶏ささみ</option>
               <option value="鶏むね肉(皮なし)" data-kcal="116" data-protein="23.3" data-fat="1.9" data-carbs="0.1">鶏むね肉(皮なし)</option>
@@ -136,7 +136,9 @@
         <label>g数
           <input type="number" id="mealFoodGrams" min="0" step="1" placeholder="例: 100">
         </label>
+        <button type="button" class="btn ghost" id="mealFoodAddBtn">＋ 材料に追加</button>
       </div>
+      <div id="mealFoodChips" class="chip-list hidden"></div>
       <p class="hint" id="mealFoodHint" hidden></p>
 
       <label class="photo-field">

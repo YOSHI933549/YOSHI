@@ -221,9 +221,11 @@ function initMeals() {
 
   document.getElementById("mealTime").value = nowTimeStr();
 
-  // 食品を選んでg数を入れると、カロリー・PFCを自動計算して入力欄に反映する
+  // 材料を複数選んで「＋ 材料に追加」で積み上げ、合計をカロリー・PFC欄に自動反映する
   const foodPreset = document.getElementById("mealFoodPreset");
   const foodGrams = document.getElementById("mealFoodGrams");
+  const foodAddBtn = document.getElementById("mealFoodAddBtn");
+  const foodChips = document.getElementById("mealFoodChips");
   const foodHint = document.getElementById("mealFoodHint");
   const nameInput = document.getElementById("mealName");
   const caloriesInput = document.getElementById("mealCalories");
@@ -231,29 +233,81 @@ function initMeals() {
   const fatInput = document.getElementById("mealFat");
   const carbsInput = document.getElementById("mealCarbs");
 
-  function applyFoodPreset() {
-    const opt = foodPreset.selectedOptions[0];
-    const grams = Number(foodGrams.value);
-    if (!opt || !opt.value || !grams) {
+  let ingredients = []; // [{name, grams, kcal, protein, fat, carbs}]
+  let lastAutoName = ""; // メニュー名を自動入力した内容を覚えておき、ユーザーが手動で書き換えていなければ更新し続ける
+
+  function renderFoodChips() {
+    foodChips.classList.toggle("hidden", ingredients.length === 0);
+    foodChips.innerHTML = ingredients
+      .map(
+        (ing, i) =>
+          `<span class="food-chip">${escapeHTML(ing.name)} ${ing.grams}g<button type="button" data-i="${i}" title="削除">✕</button></span>`
+      )
+      .join("");
+  }
+
+  function recalcFromIngredients() {
+    if (ingredients.length === 0) {
       foodHint.hidden = true;
       return;
     }
-    const ratio = grams / 100;
-    const kcal = Math.round(Number(opt.dataset.kcal) * ratio);
-    const protein = Math.round(Number(opt.dataset.protein) * ratio * 10) / 10;
-    const fat = Math.round(Number(opt.dataset.fat) * ratio * 10) / 10;
-    const carbs = Math.round(Number(opt.dataset.carbs) * ratio * 10) / 10;
+    const totals = ingredients.reduce(
+      (sum, ing) => ({
+        kcal: sum.kcal + ing.kcal,
+        protein: sum.protein + ing.protein,
+        fat: sum.fat + ing.fat,
+        carbs: sum.carbs + ing.carbs,
+      }),
+      { kcal: 0, protein: 0, fat: 0, carbs: 0 }
+    );
+    const kcal = Math.round(totals.kcal);
+    const protein = Math.round(totals.protein * 10) / 10;
+    const fat = Math.round(totals.fat * 10) / 10;
+    const carbs = Math.round(totals.carbs * 10) / 10;
     caloriesInput.value = kcal;
     proteinInput.value = protein;
     fatInput.value = fat;
     carbsInput.value = carbs;
-    if (!nameInput.value.trim()) nameInput.value = `${opt.value} ${grams}g`;
+    const autoName = ingredients.map((ing) => `${ing.name}${ing.grams}g`).join(" + ");
+    if (!nameInput.value.trim() || nameInput.value === lastAutoName) nameInput.value = autoName;
+    lastAutoName = autoName;
     foodHint.hidden = false;
-    foodHint.textContent = `${opt.value} ${grams}g → ${kcal}kcal / P${protein}g / F${fat}g / C${carbs}g(自動計算・下の欄で微調整できます)`;
+    foodHint.textContent = `材料${ingredients.length}点の合計 → ${kcal}kcal / P${protein}g / F${fat}g / C${carbs}g(下の欄で微調整できます)`;
   }
 
-  foodPreset.addEventListener("change", applyFoodPreset);
-  foodGrams.addEventListener("input", applyFoodPreset);
+  foodAddBtn.addEventListener("click", () => {
+    const opt = foodPreset.selectedOptions[0];
+    const grams = Number(foodGrams.value);
+    if (!opt || !opt.value) {
+      toast("食品を選択してください");
+      return;
+    }
+    if (!grams) {
+      toast("g数を入力してください");
+      return;
+    }
+    const ratio = grams / 100;
+    ingredients.push({
+      name: opt.value,
+      grams,
+      kcal: Number(opt.dataset.kcal) * ratio,
+      protein: Number(opt.dataset.protein) * ratio,
+      fat: Number(opt.dataset.fat) * ratio,
+      carbs: Number(opt.dataset.carbs) * ratio,
+    });
+    renderFoodChips();
+    recalcFromIngredients();
+    foodPreset.value = "";
+    foodGrams.value = "";
+  });
+
+  foodChips.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    ingredients.splice(Number(btn.dataset.i), 1);
+    renderFoodChips();
+    recalcFromIngredients();
+  });
 
   const photoInput = document.getElementById("mealPhoto");
   const preview = document.getElementById("mealPhotoPreview");
@@ -298,6 +352,9 @@ function initMeals() {
     document.getElementById("mealTime").value = nowTimeStr();
     pendingPhoto = null;
     preview.classList.add("hidden");
+    ingredients = [];
+    lastAutoName = "";
+    renderFoodChips();
     foodHint.hidden = true;
     renderMeals();
     toast("食事を記録しました");
