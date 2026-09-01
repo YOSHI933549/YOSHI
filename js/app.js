@@ -221,6 +221,40 @@ function initMeals() {
 
   document.getElementById("mealTime").value = nowTimeStr();
 
+  // 食品を選んでg数を入れると、カロリー・PFCを自動計算して入力欄に反映する
+  const foodPreset = document.getElementById("mealFoodPreset");
+  const foodGrams = document.getElementById("mealFoodGrams");
+  const foodHint = document.getElementById("mealFoodHint");
+  const nameInput = document.getElementById("mealName");
+  const caloriesInput = document.getElementById("mealCalories");
+  const proteinInput = document.getElementById("mealProtein");
+  const fatInput = document.getElementById("mealFat");
+  const carbsInput = document.getElementById("mealCarbs");
+
+  function applyFoodPreset() {
+    const opt = foodPreset.selectedOptions[0];
+    const grams = Number(foodGrams.value);
+    if (!opt || !opt.value || !grams) {
+      foodHint.hidden = true;
+      return;
+    }
+    const ratio = grams / 100;
+    const kcal = Math.round(Number(opt.dataset.kcal) * ratio);
+    const protein = Math.round(Number(opt.dataset.protein) * ratio * 10) / 10;
+    const fat = Math.round(Number(opt.dataset.fat) * ratio * 10) / 10;
+    const carbs = Math.round(Number(opt.dataset.carbs) * ratio * 10) / 10;
+    caloriesInput.value = kcal;
+    proteinInput.value = protein;
+    fatInput.value = fat;
+    carbsInput.value = carbs;
+    if (!nameInput.value.trim()) nameInput.value = `${opt.value} ${grams}g`;
+    foodHint.hidden = false;
+    foodHint.textContent = `${opt.value} ${grams}g → ${kcal}kcal / P${protein}g / F${fat}g / C${carbs}g(自動計算・下の欄で微調整できます)`;
+  }
+
+  foodPreset.addEventListener("change", applyFoodPreset);
+  foodGrams.addEventListener("input", applyFoodPreset);
+
   const photoInput = document.getElementById("mealPhoto");
   const preview = document.getElementById("mealPhotoPreview");
   let pendingPhoto = null;
@@ -264,6 +298,7 @@ function initMeals() {
     document.getElementById("mealTime").value = nowTimeStr();
     pendingPhoto = null;
     preview.classList.add("hidden");
+    foodHint.hidden = true;
     renderMeals();
     toast("食事を記録しました");
   });
