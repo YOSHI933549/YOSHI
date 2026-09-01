@@ -224,6 +224,9 @@ function initMeals() {
   // 材料を複数選んで「＋ 材料に追加」で積み上げ、合計をカロリー・PFC欄に自動反映する
   const foodPreset = document.getElementById("mealFoodPreset");
   const foodGrams = document.getElementById("mealFoodGrams");
+  const foodGramsField = document.getElementById("mealFoodGramsField");
+  const foodServingsField = document.getElementById("mealFoodServingsField");
+  const foodServingsBtns = document.getElementById("mealFoodServings");
   const foodAddBtn = document.getElementById("mealFoodAddBtn");
   const foodChips = document.getElementById("mealFoodChips");
   const foodHint = document.getElementById("mealFoodHint");
@@ -235,6 +238,34 @@ function initMeals() {
 
   let ingredients = []; // [{name, grams, kcal, protein, fat, carbs}]
   let lastAutoName = ""; // メニュー名を自動入力した内容を覚えておき、ユーザーが手動で書き換えていなければ更新し続ける
+
+  // プロテインなど「毎回決まった量(例: 15g/30g)しか使わない」食品は、
+  // data-servings で指定された量だけをボタンで選ばせ、自由なg数入力をさせない
+  function updateFoodInputMode() {
+    const opt = foodPreset.selectedOptions[0];
+    const servings = opt && opt.dataset.servings ? opt.dataset.servings.split(",").map(Number) : null;
+    foodGrams.value = "";
+    if (servings) {
+      foodGramsField.classList.add("hidden");
+      foodServingsField.classList.remove("hidden");
+      foodServingsBtns.innerHTML = servings
+        .map((g) => `<button type="button" class="serving-btn" data-g="${g}">${g}g</button>`)
+        .join("");
+    } else {
+      foodGramsField.classList.remove("hidden");
+      foodServingsField.classList.add("hidden");
+      foodServingsBtns.innerHTML = "";
+    }
+  }
+
+  foodPreset.addEventListener("change", updateFoodInputMode);
+
+  foodServingsBtns.addEventListener("click", (e) => {
+    const btn = e.target.closest(".serving-btn");
+    if (!btn) return;
+    foodGrams.value = btn.dataset.g;
+    foodServingsBtns.querySelectorAll(".serving-btn").forEach((b) => b.classList.toggle("active", b === btn));
+  });
 
   function renderFoodChips() {
     foodChips.classList.toggle("hidden", ingredients.length === 0);
@@ -298,7 +329,7 @@ function initMeals() {
     renderFoodChips();
     recalcFromIngredients();
     foodPreset.value = "";
-    foodGrams.value = "";
+    updateFoodInputMode();
   });
 
   foodChips.addEventListener("click", (e) => {
@@ -355,6 +386,7 @@ function initMeals() {
     ingredients = [];
     lastAutoName = "";
     renderFoodChips();
+    updateFoodInputMode();
     foodHint.hidden = true;
     renderMeals();
     toast("食事を記録しました");

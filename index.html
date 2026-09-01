@@ -122,7 +122,7 @@
               <option value="ギリシャヨーグルト(無糖)" data-kcal="71" data-protein="10" data-fat="0.2" data-carbs="4.6">ギリシャヨーグルト(無糖)</option>
               <option value="豆腐(木綿)" data-kcal="72" data-protein="6.6" data-fat="4.2" data-carbs="1.6">豆腐(木綿)</option>
               <option value="納豆" data-kcal="190" data-protein="16.5" data-fat="10" data-carbs="12.1">納豆</option>
-              <option value="プロテインパウダー(ホエイ目安)" data-kcal="380" data-protein="75" data-fat="5" data-carbs="8">プロテインパウダー(ホエイ目安)</option>
+              <option value="プロテイン(NORM)" data-kcal="393" data-protein="72" data-fat="5.3" data-carbs="18.7" data-servings="15,30">プロテイン(NORM)</option>
             </optgroup>
             <optgroup label="主食・その他">
               <option value="白米(ごはん)" data-kcal="156" data-protein="2.5" data-fat="0.3" data-carbs="37.1">白米(ごはん)</option>
@@ -133,9 +133,13 @@
             </optgroup>
           </select>
         </label>
-        <label>g数
+        <label id="mealFoodGramsField">g数
           <input type="number" id="mealFoodGrams" min="0" step="1" placeholder="例: 100">
         </label>
+        <div id="mealFoodServingsField" class="serving-group hidden">
+          <span class="serving-label">1回の量</span>
+          <div id="mealFoodServings" class="serving-group-btns"></div>
+        </div>
         <button type="button" class="btn ghost" id="mealFoodAddBtn">＋ 材料に追加</button>
       </div>
       <div id="mealFoodChips" class="chip-list hidden"></div>
