@@ -235,8 +235,15 @@
         種目名(自由入力)
         <input type="text" id="exerciseCustomName" placeholder="例: ケーブルクロスオーバー">
       </label>
+      <div class="chart-head">
+        <span class="serving-label">セット数</span>
+        <div class="range-group" id="setCountGroup">
+          <button type="button" class="range-btn" data-count="1">1</button>
+          <button type="button" class="range-btn" data-count="2">2</button>
+          <button type="button" class="range-btn active" data-count="3">3</button>
+        </div>
+      </div>
       <div id="setRows"></div>
-      <button type="button" class="btn ghost" id="addSetRow">＋ セットを追加</button>
       <label>メモ
         <input type="text" id="workoutMemo" placeholder="任意(体調・フォームの気づきなど)">
       </label>
