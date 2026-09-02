@@ -479,9 +479,22 @@ function initWorkouts() {
   dateInput.addEventListener("change", renderWorkouts);
 
   const setRows = document.getElementById("setRows");
-  document.getElementById("addSetRow").addEventListener("click", () => addSetRow());
-  addSetRow();
-  addSetRow();
+  const setCountGroup = document.getElementById("setCountGroup");
+  let setCount = 3;
+
+  function renderSetRows() {
+    setRows.innerHTML = "";
+    for (let i = 0; i < setCount; i++) addSetRow();
+  }
+
+  setCountGroup.addEventListener("click", (e) => {
+    const btn = e.target.closest(".range-btn");
+    if (!btn) return;
+    setCount = Number(btn.dataset.count);
+    setCountGroup.querySelectorAll(".range-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    renderSetRows();
+  });
+  renderSetRows();
 
   const exerciseSelect = document.getElementById("exerciseSelect");
   const customField = document.getElementById("exerciseCustomField");
@@ -520,9 +533,7 @@ function initWorkouts() {
     saveState();
     e.target.reset();
     customField.classList.add("hidden");
-    setRows.innerHTML = "";
-    addSetRow();
-    addSetRow();
+    renderSetRows();
     renderWorkouts();
     toast("トレーニングを記録しました");
   });
@@ -541,11 +552,11 @@ function addSetRow() {
   const setRows = document.getElementById("setRows");
   const row = document.createElement("div");
   row.className = "set-row";
+  const setNo = setRows.children.length + 1;
   row.innerHTML = `
+    <span class="set-no">${setNo}セット目</span>
     <input type="number" class="set-reps" placeholder="回数" min="0" step="1">
-    <input type="number" class="set-weight" placeholder="重量(kg)" min="0" step="0.5">
-    <button type="button" class="del-set" title="この行を削除">✕</button>`;
-  row.querySelector(".del-set").addEventListener("click", () => row.remove());
+    <input type="number" class="set-weight" placeholder="重量(kg)" min="0" step="0.5">`;
   setRows.appendChild(row);
 }
 
