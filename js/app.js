@@ -478,23 +478,17 @@ function initWorkouts() {
   dateInput.value = todayStr();
   dateInput.addEventListener("change", renderWorkouts);
 
-  const setRows = document.getElementById("setRows");
   const setCountGroup = document.getElementById("setCountGroup");
+  const setRepsInput = document.getElementById("setReps");
+  const setWeightInput = document.getElementById("setWeight");
   let setCount = 3;
-
-  function renderSetRows() {
-    setRows.innerHTML = "";
-    for (let i = 0; i < setCount; i++) addSetRow();
-  }
 
   setCountGroup.addEventListener("click", (e) => {
     const btn = e.target.closest(".range-btn");
     if (!btn) return;
     setCount = Number(btn.dataset.count);
     setCountGroup.querySelectorAll(".range-btn").forEach((b) => b.classList.toggle("active", b === btn));
-    renderSetRows();
   });
-  renderSetRows();
 
   const exerciseSelect = document.getElementById("exerciseSelect");
   const customField = document.getElementById("exerciseCustomField");
@@ -508,12 +502,10 @@ function initWorkouts() {
 
   document.getElementById("workoutForm").addEventListener("submit", (e) => {
     e.preventDefault();
-    const sets = [...setRows.querySelectorAll(".set-row")]
-      .map((row) => ({
-        reps: Number(row.querySelector(".set-reps").value) || 0,
-        weight: Number(row.querySelector(".set-weight").value) || 0,
-      }))
-      .filter((s) => s.reps > 0 || s.weight > 0);
+    const reps = Number(setRepsInput.value) || 0;
+    const weight = Number(setWeightInput.value) || 0;
+    // 全セット共通の回数・重量を、選んだセット数ぶん複製する
+    const sets = reps > 0 || weight > 0 ? Array.from({ length: setCount }, () => ({ reps, weight })) : [];
 
     const name =
       exerciseSelect.value === "__custom__" ? customInput.value.trim() : exerciseSelect.value;
@@ -533,7 +525,6 @@ function initWorkouts() {
     saveState();
     e.target.reset();
     customField.classList.add("hidden");
-    renderSetRows();
     renderWorkouts();
     toast("トレーニングを記録しました");
   });
@@ -546,18 +537,6 @@ function initWorkouts() {
     saveState();
     renderWorkouts();
   });
-}
-
-function addSetRow() {
-  const setRows = document.getElementById("setRows");
-  const row = document.createElement("div");
-  row.className = "set-row";
-  const setNo = setRows.children.length + 1;
-  row.innerHTML = `
-    <span class="set-no">${setNo}セット目</span>
-    <input type="number" class="set-reps" placeholder="回数" min="0" step="1">
-    <input type="number" class="set-weight" placeholder="重量(kg)" min="0" step="0.5">`;
-  setRows.appendChild(row);
 }
 
 function workoutItemHTML(w, withDelete = true) {
