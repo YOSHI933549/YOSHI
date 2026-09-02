@@ -101,6 +101,12 @@
         <input type="text" id="mealName" placeholder="例: 鶏胸肉とごはん" required>
       </label>
 
+      <label class="photo-field">
+        栄養成分表示の写真から自動入力(任意)
+        <input type="file" id="mealLabelPhoto" accept="image/*" capture="environment">
+      </label>
+      <p class="hint" id="mealLabelHint" hidden></p>
+
       <div class="field-row food-add-row">
         <label>材料を選んで追加(任意・複数可)
           <select id="mealFoodPreset">
@@ -480,5 +486,6 @@
 <script src="js/app.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/n8n-sync.js"></script>
+<script src="js/ocr.js"></script>
 </body>
 </html>
