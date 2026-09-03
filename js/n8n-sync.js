@@ -13,6 +13,8 @@
    ========================================================================== */
 
 const N8N_URL_KEY = "yoshi-n8n-fetch-url";
+// 体重ログのうち n8n から取り込んだものに付ける印(手入力の記録と区別するため)
+const N8N_SOURCE = "n8n";
 let n8nFetchInFlight = false;
 
 function getN8nFetchUrl() {
@@ -82,25 +84,48 @@ async function fetchFromN8n(showToast) {
     const rows = await res.json();
     if (!Array.isArray(rows)) throw new Error("unexpected response shape");
 
-    const existingDates = new Set(state.weightLogs.map((l) => l.date));
+    // 日付ごとに既存の記録を引けるようにしておく
+    const byDate = new Map(state.weightLogs.map((l) => [l.date, l]));
     let added = 0;
+    let updated = 0;
     rows.forEach((row) => {
       const date = row && row.date;
       const weight = row && Number(row.weight);
-      if (!date || !weight || existingDates.has(date)) return;
-      state.weightLogs.push({ id: uid(), date, weight });
-      existingDates.add(date);
-      added++;
+      if (!date || !weight) return;
+
+      const existing = byDate.get(date);
+      if (!existing) {
+        // まだ無い日付は新規に追加する。source を残しておくことで、
+        // 次回以降この記録が n8n 由来かどうかを判定できるようにする
+        const entry = { id: uid(), date, weight, source: N8N_SOURCE };
+        state.weightLogs.push(entry);
+        byDate.set(date, entry);
+        added++;
+        return;
+      }
+
+      // すでにある日付でも、n8n から取り込んだ記録なら最新の値で更新する
+      // (体重計で測り直した場合や、以前の取り込みが古い値だった場合のため)。
+      // アプリ内で手入力・編集した記録には source が無いので、常に手入力側を優先する。
+      if (existing.source === N8N_SOURCE && existing.weight !== weight) {
+        existing.weight = weight;
+        updated++;
+      }
     });
 
-    if (added > 0) {
+    if (added > 0 || updated > 0) {
       saveState();
       renderAll();
-      if (showToast) toast(`体重を${added}件取り込みました`);
+      if (showToast) {
+        const parts = [];
+        if (added > 0) parts.push(`${added}件を追加`);
+        if (updated > 0) parts.push(`${updated}件を更新`);
+        toast(`体重を${parts.join("、")}しました`);
+      }
     } else if (showToast) {
       toast("新しい記録はありませんでした");
     }
-    setN8nStatus(`最終取得: ${nowTimeStr()}(新規${added}件)`);
+    setN8nStatus(`最終取得: ${nowTimeStr()}(追加${added}件・更新${updated}件)`);
   } catch (e) {
     console.error("n8n fetch failed", e);
     setN8nStatus("取得に失敗しました。URLを確認してください。");
