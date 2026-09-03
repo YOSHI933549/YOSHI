@@ -225,6 +225,7 @@ function initMeals() {
   const foodPreset = document.getElementById("mealFoodPreset");
   const foodGrams = document.getElementById("mealFoodGrams");
   const foodGramsField = document.getElementById("mealFoodGramsField");
+  const foodGramsLabel = document.getElementById("mealFoodGramsLabel");
   const foodServingsField = document.getElementById("mealFoodServingsField");
   const foodServingsBtns = document.getElementById("mealFoodServings");
   const foodAddBtn = document.getElementById("mealFoodAddBtn");
@@ -236,25 +237,32 @@ function initMeals() {
   const fatInput = document.getElementById("mealFat");
   const carbsInput = document.getElementById("mealCarbs");
 
-  let ingredients = []; // [{name, grams, kcal, protein, fat, carbs}]
+  let ingredients = []; // [{name, qty, unitLabel, kcal, protein, fat, carbs}]
   let lastAutoName = ""; // メニュー名を自動入力した内容を覚えておき、ユーザーが手動で書き換えていなければ更新し続ける
 
   // プロテインなど「毎回決まった量(例: 15g/30g)しか使わない」食品は、
-  // data-servings で指定された量だけをボタンで選ばせ、自由なg数入力をさせない
+  // data-servings で指定された量だけをボタンで選ばせ、自由なg数入力をさせない。
+  // 食パンなど「g数ではなく枚数・個数で数える」食品は data-unit="count" +
+  // data-unit-label(例: 枚)を持たせ、入力欄のラベル・単位を切り替える
+  // (g数の代わりに枚数を入力し、100gあたりではなく1枚あたりの値で計算する)
   function updateFoodInputMode() {
     const opt = foodPreset.selectedOptions[0];
     const servings = opt && opt.dataset.servings ? opt.dataset.servings.split(",").map(Number) : null;
+    const unitLabel = (opt && opt.dataset.unitLabel) || "g";
     foodGrams.value = "";
     if (servings) {
       foodGramsField.classList.add("hidden");
       foodServingsField.classList.remove("hidden");
       foodServingsBtns.innerHTML = servings
-        .map((g) => `<button type="button" class="serving-btn" data-g="${g}">${g}g</button>`)
+        .map((g) => `<button type="button" class="serving-btn" data-g="${g}">${g}${unitLabel}</button>`)
         .join("");
     } else {
       foodGramsField.classList.remove("hidden");
       foodServingsField.classList.add("hidden");
       foodServingsBtns.innerHTML = "";
+      const isCount = opt && opt.dataset.unit === "count";
+      foodGramsLabel.textContent = isCount ? `${unitLabel}数` : "g数";
+      foodGrams.placeholder = isCount ? "例: 1" : "例: 100";
     }
   }
 
@@ -272,7 +280,7 @@ function initMeals() {
     foodChips.innerHTML = ingredients
       .map(
         (ing, i) =>
-          `<span class="food-chip">${escapeHTML(ing.name)} ${ing.grams}g<button type="button" data-i="${i}" title="削除">✕</button></span>`
+          `<span class="food-chip">${escapeHTML(ing.name)} ${ing.qty}${ing.unitLabel}<button type="button" data-i="${i}" title="削除">✕</button></span>`
       )
       .join("");
   }
@@ -299,7 +307,7 @@ function initMeals() {
     proteinInput.value = protein;
     fatInput.value = fat;
     carbsInput.value = carbs;
-    const autoName = ingredients.map((ing) => `${ing.name}${ing.grams}g`).join(" + ");
+    const autoName = ingredients.map((ing) => `${ing.name}${ing.qty}${ing.unitLabel}`).join(" + ");
     if (!nameInput.value.trim() || nameInput.value === lastAutoName) nameInput.value = autoName;
     lastAutoName = autoName;
     foodHint.hidden = false;
@@ -308,19 +316,23 @@ function initMeals() {
 
   foodAddBtn.addEventListener("click", () => {
     const opt = foodPreset.selectedOptions[0];
-    const grams = Number(foodGrams.value);
+    const qty = Number(foodGrams.value);
     if (!opt || !opt.value) {
       toast("食品を選択してください");
       return;
     }
-    if (!grams) {
-      toast("g数を入力してください");
+    if (!qty) {
+      toast(opt.dataset.unit === "count" ? `${opt.dataset.unitLabel || ""}数を入力してください` : "g数を入力してください");
       return;
     }
-    const ratio = grams / 100;
+    // g数で数える食品は100gあたり、個数・枚数などで数える食品は1個(1枚)あたりの
+    // データを保持しているので、それぞれ ÷100 / ÷1 で倍率を出す
+    const unitLabel = opt.dataset.unit === "count" ? opt.dataset.unitLabel || "個" : "g";
+    const ratio = opt.dataset.unit === "count" ? qty : qty / 100;
     ingredients.push({
       name: opt.value,
-      grams,
+      qty,
+      unitLabel,
       kcal: Number(opt.dataset.kcal) * ratio,
       protein: Number(opt.dataset.protein) * ratio,
       fat: Number(opt.dataset.fat) * ratio,
