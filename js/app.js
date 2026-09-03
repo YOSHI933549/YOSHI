@@ -697,9 +697,20 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   }
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.clientWidth || canvas.parentElement.clientWidth || 320;
-  const cssHeight = Number(canvas.getAttribute("height")) || 140;
+  // The intended on-screen height is captured once. Assigning `canvas.height`
+  // below rewrites the height attribute to the device-pixel size, so re-reading
+  // that attribute on a later re-draw would multiply the height by the device
+  // pixel ratio again and again — on a 3x phone the chart grew taller every
+  // time the dashboard re-rendered.
+  if (!canvas.dataset.baseHeight) {
+    canvas.dataset.baseHeight = String(Number(canvas.getAttribute("height")) || 140);
+  }
+  const cssHeight = Number(canvas.dataset.baseHeight);
   canvas.width = cssWidth * dpr;
   canvas.height = cssHeight * dpr;
+  // The stylesheet only sets `width: 100%`, so without an explicit CSS height
+  // the element lays out at the device-pixel height (2-3x too tall).
+  canvas.style.height = cssHeight + "px";
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssWidth, cssHeight);
@@ -725,31 +736,25 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
     return;
   }
 
-  // Headline callout (current value + date), top-right — the chart reads
-  // "here's where you are" first, "here's the trend" second.
+  // Headline (current value + date) as a single compact line at the top-left.
+  // A boxed callout used to sit here, but it plus its padding ate roughly half
+  // of the canvas height, squeezing the line chart itself into the remainder.
+  // Plain text keeps the "where am I now" answer while leaving the vertical
+  // space to the part that actually shows the trend.
   const latest = windowed[windowed.length - 1];
-  const calloutH = Math.min(44, cssHeight * 0.26);
-  const calloutW = Math.min(112, cssWidth * 0.42);
-  const calloutX = cssWidth - calloutW;
-  const calloutY = 2;
-  drawRoundedRect(ctx, calloutX, calloutY, calloutW, calloutH, 10);
-  ctx.fillStyle = surfaceAlt;
-  ctx.fill();
-  ctx.strokeStyle = border;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.textAlign = "right";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
   ctx.fillStyle = text;
-  ctx.font = "bold 18px sans-serif";
-  ctx.fillText(`${latest.weight}kg`, calloutX + calloutW - 10, calloutY + calloutH * 0.52);
+  ctx.font = "bold 15px sans-serif";
+  const headline = `${latest.weight}kg`;
+  ctx.fillText(headline, 8, 14);
   ctx.font = "10px sans-serif";
   ctx.fillStyle = muted;
-  ctx.fillText(fmtDate(latest.date), calloutX + calloutW - 10, calloutY + calloutH - 8);
-  ctx.textAlign = "left";
+  ctx.fillText(fmtDate(latest.date), 8 + ctx.measureText(headline).width + 22, 14);
 
   const padL = 8;
   const padR = 36;
-  const padT = calloutY + calloutH + 20;
+  const padT = 24;
   const padB = 20;
   const plotW = cssWidth - padL - padR;
   const plotH = cssHeight - padT - padB;
@@ -853,20 +858,6 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
     ctx.strokeStyle = primary;
     ctx.stroke();
   });
-}
-
-function drawRoundedRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(x, y, w, h, r);
-    return;
-  }
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }
 
 // -------------------------------------------------------------------------
