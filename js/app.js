@@ -512,6 +512,8 @@ function initWorkouts() {
     if (isCustom) customInput.focus();
   });
 
+  initExercisePicker(exerciseSelect);
+
   document.getElementById("workoutForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const reps = Number(setRepsInput.value) || 0;
@@ -537,6 +539,7 @@ function initWorkouts() {
     saveState();
     e.target.reset();
     customField.classList.add("hidden");
+    exerciseSelect.dispatchEvent(new Event("change")); // 種目ピッカーの表示(アイコン・名前)を先頭の種目に戻す
     renderWorkouts();
     toast("トレーニングを記録しました");
   });
@@ -549,6 +552,80 @@ function initWorkouts() {
     saveState();
     renderWorkouts();
   });
+}
+
+// 種目名の横に小さい絵(線画アイコン)をつけた一覧から種目を選べるようにする。
+// 種目リストの実体は index.html の <select id="exerciseSelect"> のまま(隠して残す)にして、
+// そこから読み取って見た目だけを作る。値の保存や他の処理は今まで通り exerciseSelect(隠しselect)が担当する。
+function initExercisePicker(nativeSelect) {
+  const picker = document.getElementById("exercisePicker");
+  const btn = document.getElementById("exercisePickerBtn");
+  const btnIcon = document.getElementById("exercisePickerIcon");
+  const btnLabel = document.getElementById("exercisePickerLabel");
+  const panel = document.getElementById("exercisePickerPanel");
+  if (!picker || !btn || !panel) return;
+
+  const iconFor = (value) =>
+    (value === "__custom__" ? window.EXERCISE_ICON_CUSTOM : window.EXERCISE_ICONS && window.EXERCISE_ICONS[value]) ||
+    "";
+
+  let panelHTML = "";
+  Array.from(nativeSelect.children).forEach((node) => {
+    if (node.tagName === "OPTGROUP") {
+      panelHTML += `<div class="exercise-group-label">${escapeHTML(node.label)}</div>`;
+      Array.from(node.children).forEach((opt) => (panelHTML += exerciseOptionHTML(opt)));
+    } else if (node.tagName === "OPTION") {
+      panelHTML += exerciseOptionHTML(node);
+    }
+  });
+  panel.innerHTML = panelHTML;
+
+  function exerciseOptionHTML(opt) {
+    const isCustom = opt.value === "__custom__";
+    return `
+    <button type="button" class="exercise-option${isCustom ? " is-custom" : ""}" data-value="${escapeHTML(opt.value)}">
+      <span class="exercise-option-icon">${iconFor(opt.value)}</span>
+      <span class="exercise-option-label">${escapeHTML(opt.textContent)}</span>
+    </button>`;
+  }
+
+  function syncButtonFromSelect() {
+    const opt = nativeSelect.selectedOptions[0];
+    btnIcon.innerHTML = opt ? iconFor(opt.value) : "";
+    btnLabel.textContent = opt ? opt.textContent : "種目を選択";
+  }
+
+  function openPanel() {
+    panel.classList.remove("hidden");
+    btn.setAttribute("aria-expanded", "true");
+  }
+  function closePanel() {
+    panel.classList.add("hidden");
+    btn.setAttribute("aria-expanded", "false");
+  }
+
+  btn.addEventListener("click", () => {
+    panel.classList.contains("hidden") ? openPanel() : closePanel();
+  });
+
+  panel.addEventListener("click", (e) => {
+    const optBtn = e.target.closest(".exercise-option");
+    if (!optBtn) return;
+    nativeSelect.value = optBtn.dataset.value;
+    nativeSelect.dispatchEvent(new Event("change"));
+    closePanel();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!picker.contains(e.target)) closePanel();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closePanel();
+  });
+
+  // 隠しselectの値が変わったら(一覧からのクリック・フォームリセットどちらでも)ボタン表示を追従させる
+  nativeSelect.addEventListener("change", syncButtonFromSelect);
+  syncButtonFromSelect();
 }
 
 function workoutItemHTML(w, withDelete = true) {

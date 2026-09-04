@@ -196,7 +196,15 @@
       <h3>種目を追加</h3>
       <div class="field-row">
         <label>種目名
-          <select id="exerciseSelect">
+          <div class="exercise-picker" id="exercisePicker">
+            <button type="button" class="exercise-picker-btn" id="exercisePickerBtn" aria-haspopup="listbox" aria-expanded="false">
+              <span class="exercise-picker-icon" id="exercisePickerIcon"></span>
+              <span class="exercise-picker-label" id="exercisePickerLabel">種目を選択</span>
+              <span class="exercise-picker-chevron">▾</span>
+            </button>
+            <div class="exercise-picker-panel hidden" id="exercisePickerPanel" role="listbox"></div>
+          </div>
+          <select id="exerciseSelect" class="hidden" aria-hidden="true" tabindex="-1">
             <optgroup label="胸">
               <option value="ベンチプレス">ベンチプレス</option>
               <option value="インクラインベンチプレス">インクラインベンチプレス</option>
@@ -483,6 +491,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
+<script src="js/exercise-icons.js"></script>
 <script src="js/app.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/n8n-sync.js"></script>
