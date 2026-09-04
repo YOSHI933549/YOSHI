@@ -16,6 +16,7 @@ const DEFAULT_STATE = {
 
 let state = loadState();
 let weightChartRange = "all"; // "30" | "90" | "180" | "all"
+let calorieChartRange = "all"; // "30" | "90" | "180" | "all"
 let trendRange = "30"; // "7" | "30" | "90" | "all"
 
 // -------------------------------------------------------------------------
@@ -112,6 +113,15 @@ function getLatestWeight() {
   return logs.length ? logs[logs.length - 1] : null;
 }
 
+// カロリー推移グラフの目標線用。体重と違って目標カロリーは体重が変わるたびに
+// 動くので、過去の日付ごとに遡って計算するのではなく「直近の体重での現在の
+// 目標」を一本の目安線として表示する(体重の目標線と同じ考え方)。
+function currentTargetCalories() {
+  const latest = getLatestWeight();
+  const targets = state.profile && latest ? computeTargets(state.profile, latest.weight) : null;
+  return targets ? targets.calories : null;
+}
+
 function computeTargets(profile, weightKg) {
   if (!profile || !weightKg) return null;
   const { height, age, gender, activity, surplus, fatRatio } = profile;
@@ -176,6 +186,7 @@ function renderDashboard() {
 
   renderMacroCards(totals, targets);
   renderWeightChart("weightChart", state.weightLogs, 30);
+  renderCalorieChart("calorieChart", mealDailyTotals(), 30, targets.calories);
 
   // Today's meals
   const mealsListEl = document.getElementById("todayMealsList");
@@ -218,6 +229,16 @@ function initMeals() {
   const dateInput = document.getElementById("mealsDate");
   dateInput.value = todayStr();
   dateInput.addEventListener("change", renderMeals);
+
+  document.getElementById("calorieRangeGroup").addEventListener("click", (e) => {
+    const btn = e.target.closest(".range-btn");
+    if (!btn) return;
+    calorieChartRange = btn.dataset.range;
+    document
+      .querySelectorAll("#calorieRangeGroup .range-btn")
+      .forEach((b) => b.classList.toggle("active", b === btn));
+    renderMeals();
+  });
 
   document.getElementById("mealTime").value = nowTimeStr();
 
@@ -445,6 +466,13 @@ function renderMeals() {
   el.innerHTML = items.length
     ? items.map((m) => mealItemHTML(m, true)).join("")
     : `<div class="empty-state">この日の記録はまだありません。</div>`;
+
+  // カロリー推移グラフは選択中の日付に関わらず記録全体の推移を見せるもの
+  // (体重タブのグラフ・履歴が日付選択と無関係なのと同じ考え方)
+  const dailyTotals = mealDailyTotals();
+  renderCalorieTrend(dailyTotals);
+  const days = calorieChartRange === "all" ? null : Number(calorieChartRange);
+  renderCalorieChart("calorieChartFull", dailyTotals, days, currentTargetCalories());
 }
 
 function resizeImageToDataURL(file, maxDim, quality) {
@@ -760,16 +788,20 @@ function renderWeight() {
   renderWeightChart("weightChartFull", state.weightLogs, days, state.profile && state.profile.targetWeight);
 }
 
-function renderWeightChart(canvasId, logs, days, targetWeight) {
+// 体重・カロリーどちらの推移グラフも見た目とロジックは同じ(値と目標値が違うだけ)
+// なので、実際の描画はここに1本化してある。それぞれの呼び出し元(renderWeightChart/
+// renderCalorieChart)が「値をどう文字にするか」だけを opts で渡す。
+// points: [{date: "YYYY-MM-DD", value: number}, ...](順不同でよい)
+function renderLineChart(canvasId, points, days, opts) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const sorted = [...logs].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
   let windowed = sorted;
   if (days && sorted.length > 0) {
     const anchor = new Date(sorted[sorted.length - 1].date + "T00:00:00");
     anchor.setDate(anchor.getDate() - days);
     const cutoff = anchor.toISOString().slice(0, 10);
-    windowed = sorted.filter((l) => l.date >= cutoff);
+    windowed = sorted.filter((p) => p.date >= cutoff);
     if (windowed.length < 2 && sorted.length >= 2) windowed = sorted.slice(-2); // always show a line if 2+ records exist
   }
   const dpr = window.devicePixelRatio || 1;
@@ -803,13 +835,13 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   if (windowed.length === 0) {
     ctx.fillStyle = muted;
     ctx.font = "12px sans-serif";
-    ctx.fillText("体重の記録がありません", 8, cssHeight / 2);
+    ctx.fillText(opts.noDataText, 8, cssHeight / 2);
     return;
   }
   if (windowed.length === 1) {
     ctx.fillStyle = muted;
     ctx.font = "12px sans-serif";
-    ctx.fillText(`${windowed[0].weight}kg (${fmtDate(windowed[0].date)}) — 記録を増やすとグラフが表示されます`, 8, cssHeight / 2);
+    ctx.fillText(opts.singlePointText(windowed[0].value, windowed[0].date), 8, cssHeight / 2);
     return;
   }
 
@@ -823,7 +855,7 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = text;
   ctx.font = "bold 15px sans-serif";
-  const headline = `${latest.weight}kg`;
+  const headline = opts.headline(latest.value);
   ctx.fillText(headline, 8, 14);
   ctx.font = "10px sans-serif";
   ctx.fillStyle = muted;
@@ -836,10 +868,10 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   const plotW = cssWidth - padL - padR;
   const plotH = cssHeight - padT - padB;
 
-  const weights = windowed.map((l) => l.weight);
-  if (targetWeight) weights.push(Number(targetWeight));
-  let min = Math.min(...weights);
-  let max = Math.max(...weights);
+  const values = windowed.map((p) => p.value);
+  if (opts.targetValue) values.push(Number(opts.targetValue));
+  let min = Math.min(...values);
+  let max = Math.max(...values);
   if (min === max) {
     min -= 1;
     max += 1;
@@ -849,7 +881,7 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   max += pad;
 
   const x = (i) => padL + (plotW * i) / (windowed.length - 1);
-  const y = (w) => padT + plotH - ((w - min) / (max - min)) * plotH;
+  const y = (v) => padT + plotH - ((v - min) / (max - min)) * plotH;
 
   // horizontal gridlines + y-axis labels on the right
   ctx.strokeStyle = border;
@@ -864,7 +896,7 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
     ctx.moveTo(padL, yy);
     ctx.lineTo(cssWidth - padR, yy);
     ctx.stroke();
-    ctx.fillText(val.toFixed(1), cssWidth - padR + 6, yy + 3);
+    ctx.fillText(opts.axisLabel(val), cssWidth - padR + 6, yy + 3);
   }
 
   // dashed vertical gridlines + evenly-spaced date labels along the bottom
@@ -897,9 +929,9 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
     ctx.fillText(label, tx, cssHeight - 4);
   });
 
-  // target weight reference line
-  if (targetWeight) {
-    const ty = y(Number(targetWeight));
+  // target reference line
+  if (opts.targetValue) {
+    const ty = y(Number(opts.targetValue));
     ctx.save();
     ctx.strokeStyle = orange;
     ctx.setLineDash([4, 4]);
@@ -910,14 +942,14 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
     ctx.stroke();
     ctx.restore();
     ctx.fillStyle = orange;
-    ctx.fillText(`目標 ${targetWeight}kg`, padL + 4, ty - 4);
+    ctx.fillText(opts.targetLabel(opts.targetValue), padL + 4, ty - 4);
   }
 
   // line
   ctx.beginPath();
-  windowed.forEach((l, i) => {
+  windowed.forEach((p, i) => {
     const px = x(i);
-    const py = y(l.weight);
+    const py = y(p.value);
     if (i === 0) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   });
@@ -926,15 +958,84 @@ function renderWeightChart(canvasId, logs, days, targetWeight) {
   ctx.stroke();
 
   // points — open circles (colored ring, light fill) rather than solid dots
-  windowed.forEach((l, i) => {
+  windowed.forEach((p, i) => {
     ctx.beginPath();
-    ctx.arc(x(i), y(l.weight), 3.2, 0, Math.PI * 2);
+    ctx.arc(x(i), y(p.value), 3.2, 0, Math.PI * 2);
     ctx.fillStyle = surfaceAlt;
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = primary;
     ctx.stroke();
   });
+}
+
+function renderWeightChart(canvasId, logs, days, targetWeight) {
+  renderLineChart(
+    canvasId,
+    logs.map((l) => ({ date: l.date, value: l.weight })),
+    days,
+    {
+      targetValue: targetWeight,
+      targetLabel: (v) => `目標 ${v}kg`,
+      headline: (v) => `${v}kg`,
+      axisLabel: (v) => v.toFixed(1),
+      noDataText: "体重の記録がありません",
+      singlePointText: (v, date) => `${v}kg (${fmtDate(date)}) — 記録を増やすとグラフが表示されます`,
+    }
+  );
+}
+
+// 食事記録から日ごとの合計カロリーを集計する({date, calories}の配列。複数食を合算)
+function mealDailyTotals() {
+  const byDate = {};
+  state.meals.forEach((m) => {
+    byDate[m.date] = (byDate[m.date] || 0) + (Number(m.calories) || 0);
+  });
+  return Object.entries(byDate).map(([date, calories]) => ({ date, calories }));
+}
+
+function renderCalorieChart(canvasId, dailyTotals, days, targetCalories) {
+  renderLineChart(
+    canvasId,
+    dailyTotals.map((d) => ({ date: d.date, value: d.calories })),
+    days,
+    {
+      targetValue: targetCalories,
+      targetLabel: (v) => `目標 ${Math.round(v)}kcal`,
+      headline: (v) => `${Math.round(v)}kcal`,
+      axisLabel: (v) => String(Math.round(v)),
+      noDataText: "カロリーの記録がありません",
+      singlePointText: (v, date) => `${Math.round(v)}kcal (${fmtDate(date)}) — 記録を増やすとグラフが表示されます`,
+    }
+  );
+}
+
+function renderCalorieTrend(dailyTotals) {
+  const el = document.getElementById("calorieTrend");
+  if (!el) return;
+  const sorted = [...dailyTotals].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  const latest = sorted[sorted.length - 1];
+  const avg = Math.round(sorted.reduce((sum, d) => sum + d.calories, 0) / sorted.length);
+
+  const parts = [
+    `<span>直近 ${Math.round(latest.calories)}kcal(${fmtDate(latest.date)})</span>`,
+    `<span>期間平均 ${avg}kcal</span>`,
+    `<span>記録日数 ${sorted.length}日</span>`,
+  ];
+
+  const targetCalories = currentTargetCalories();
+  if (targetCalories) {
+    const diff = avg - targetCalories;
+    const diffClass = diff > 0 ? "up" : diff < 0 ? "down" : "";
+    const diffText = diff === 0 ? "±0kcal" : diff > 0 ? `+${diff}kcal` : `${diff}kcal`;
+    parts.push(`<span>目標比(平均) <b class="${diffClass}">${diffText}</b></span>`);
+  }
+
+  el.innerHTML = parts.join("");
 }
 
 // -------------------------------------------------------------------------
@@ -1408,6 +1509,10 @@ function init() {
     renderWeightChart("weightChart", state.weightLogs, 30);
     const days = weightChartRange === "all" ? null : Number(weightChartRange);
     renderWeightChart("weightChartFull", state.weightLogs, days, state.profile && state.profile.targetWeight);
+    const dailyTotals = mealDailyTotals();
+    renderCalorieChart("calorieChart", dailyTotals, 30, currentTargetCalories());
+    const calorieDays = calorieChartRange === "all" ? null : Number(calorieChartRange);
+    renderCalorieChart("calorieChartFull", dailyTotals, calorieDays, currentTargetCalories());
     renderTrendChart("trendChart", computeTrendMetrics(trendRange).weeklyBuckets);
   });
 }
