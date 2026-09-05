@@ -1200,10 +1200,18 @@ function computeTrendMetrics(rangeKey) {
   let weekdayTargetCal = 0, weekdayActualCal = 0, weekdayDays = 0;
   let weekendTargetCal = 0, weekendActualCal = 0, weekendDays = 0;
 
-  // トレーニングの中身(部位の偏り・重量の伸び・1日のセット数・空いた日数)
+  // トレーニングの中身(部位の偏り・総ボリューム・1日のセット数・空いた日数)。
+  // 伸びているかどうかは重量だけでは判断できない(重量が同じでも回数が
+  // 8→12回に増えていれば進歩している)ので、
+  // 総ボリューム = Σ(重量 × 回数) で見る。自重種目は合計回数で見る。
   const muscleGroupCounts = {};
-  const exerciseSessions = {}; // { [name]: [{date, topWeight}] }
+  const exerciseSessions = {}; // { [name]: [{date, topWeight, reps, volume, sets}] }
   let setCountSum = 0;
+  let volumeSum = 0;
+  let repsSum = 0;
+  let firstHalfVolume = 0;
+  let lastHalfVolume = 0;
+  const halfIndex = Math.floor(dates.length / 2);
   let longestNoTrainGap = 0;
   let curNoTrainGap = 0;
   let sawWorkoutInPeriod = false;
@@ -1233,11 +1241,16 @@ function computeTrendMetrics(rangeKey) {
       const group = exerciseMuscleGroup(w.name);
       if (group) muscleGroupCounts[group] = (muscleGroupCounts[group] || 0) + 1;
       setCountSum += w.sets.length;
+      if (w.sets.length === 0) return;
       const topWeight = w.sets.reduce((mx, s) => Math.max(mx, Number(s.weight) || 0), 0);
-      if (topWeight > 0) {
-        if (!exerciseSessions[w.name]) exerciseSessions[w.name] = [];
-        exerciseSessions[w.name].push({ date, topWeight });
-      }
+      const reps = w.sets.reduce((sum, s) => sum + (Number(s.reps) || 0), 0);
+      const volume = w.sets.reduce((sum, s) => sum + (Number(s.reps) || 0) * (Number(s.weight) || 0), 0);
+      volumeSum += volume;
+      repsSum += reps;
+      if (i < halfIndex) firstHalfVolume += volume;
+      else lastHalfVolume += volume;
+      if (!exerciseSessions[w.name]) exerciseSessions[w.name] = [];
+      exerciseSessions[w.name].push({ date, topWeight, reps, volume, sets: w.sets.length });
     });
 
     const totalCal = dayMeals.reduce((s, m) => s + (Number(m.calories) || 0), 0);
@@ -1371,15 +1384,30 @@ function computeTrendMetrics(rangeKey) {
   // 同じメニューばかりになっていないか(メニュー名の種類 ÷ 記録した食事の件数)
   const menuVariety = mealEntryCount > 0 ? Math.round((mealNameSet.size / mealEntryCount) * 100) : null;
 
-  // 一番よく記録している種目の重量が、期間の前半と後半で伸びているか
+  // 一番よく記録している種目が、期間の前半と後半で伸びているか。
+  // 判定は総ボリューム(重量×回数)で行い、重量を扱わない自重種目は
+  // 合計回数で見る。あわせて重量・回数それぞれの変化も持ち、
+  // 「何が伸びた/止まったのか」まで言えるようにする。
   let progression = null;
   Object.entries(exerciseSessions).forEach(([name, sessions]) => {
     if (sessions.length < 4) return;
     if (progression && sessions.length <= progression.sessions) return;
     const half = Math.floor(sessions.length / 2);
-    const firstAvg = sessions.slice(0, half).reduce((s, x) => s + x.topWeight, 0) / half;
-    const lastAvg = sessions.slice(-half).reduce((s, x) => s + x.topWeight, 0) / half;
-    progression = { name, sessions: sessions.length, firstAvg: +firstAvg.toFixed(1), lastAvg: +lastAvg.toFixed(1) };
+    const first = sessions.slice(0, half);
+    const last = sessions.slice(-half);
+    const avg = (arr, key) => arr.reduce((s, x) => s + x[key], 0) / arr.length;
+    const isBodyweight = sessions.every((s) => s.topWeight === 0);
+    progression = {
+      name,
+      sessions: sessions.length,
+      isBodyweight,
+      firstVolume: Math.round(avg(first, "volume")),
+      lastVolume: Math.round(avg(last, "volume")),
+      firstReps: Math.round(avg(first, "reps")),
+      lastReps: Math.round(avg(last, "reps")),
+      firstWeight: +avg(first, "topWeight").toFixed(1),
+      lastWeight: +avg(last, "topWeight").toFixed(1),
+    };
   });
 
   // 最後にトレーニングしてから何日経ったか(期間ではなく全記録から見る)
@@ -1432,6 +1460,11 @@ function computeTrendMetrics(rangeKey) {
     distinctMenus: mealNameSet.size,
     muscleGroupCounts,
     avgSetsPerWorkoutDay,
+    totalVolume: Math.round(volumeSum),
+    totalReps: repsSum,
+    avgVolumePerWorkoutDay: workoutDays > 0 ? Math.round(volumeSum / workoutDays) : null,
+    firstHalfVolume: Math.round(firstHalfVolume),
+    lastHalfVolume: Math.round(lastHalfVolume),
     longestNoTrainGap,
     daysSinceLastWorkout,
     progression,
@@ -1807,23 +1840,75 @@ function generateExpertAdvice(m) {
     }
   }
 
-  // 同じ種目の重量が伸びているか(進歩性過負荷)
+  // 同じ種目が伸びているか(進歩性過負荷)。
+  // 重量だけでなく回数も含めた総ボリューム(重量×回数)で判定する。
   if (m.progression) {
     const p = m.progression;
-    const diff = +(p.lastAvg - p.firstAvg).toFixed(1);
-    if (diff <= 0) {
+    const fmtKg = (v) => v.toLocaleString("ja-JP");
+    if (p.isBodyweight) {
+      // 自重種目は重量が変わらないので、合計回数の伸びで見る
+      const diff = p.lastReps - p.firstReps;
+      if (diff <= 0) {
+        push(
+          "training",
+          2,
+          "warning",
+          `${p.name}の合計回数が1回あたり前半${p.firstReps}回・後半${p.lastReps}回で伸びていません。自重種目は回数が増えること自体が筋力アップの証拠なので、セットを1つ足すか、下ろす動作に3秒かけて負荷を上げてみてください。`
+        );
+      } else {
+        push(
+          "training",
+          5,
+          "good",
+          `${p.name}の合計回数が前半${p.firstReps}回 → 後半${p.lastReps}回に増えています(+${diff}回)。自重種目で回数が伸びているのは、確実に筋力が上がっているサインです。`
+        );
+      }
+    } else {
+      const diff = p.lastVolume - p.firstVolume;
+      const pct = p.firstVolume > 0 ? Math.round((diff / p.firstVolume) * 100) : 0;
+      if (pct <= 3) {
+        // 何が止まっているのかまで示す(重量か回数か)
+        const weightPhrase =
+          p.lastWeight > p.firstWeight
+            ? `重量は${p.firstWeight}→${p.lastWeight}kgと上がっているので、次は回数を戻していくと総量が伸びます。`
+            : `重量${p.firstWeight}kg・1日あたり${p.firstReps}回のまま止まっています。重量を2.5kg上げるか、各セットの回数を1〜2回増やすところから試してください。`;
+        push(
+          "training",
+          2,
+          "warning",
+          `${p.name}の総ボリューム(重量×回数)が1日あたり前半${fmtKg(p.firstVolume)}kg・後半${fmtKg(p.lastVolume)}kgとほぼ変わっていません。${weightPhrase}`
+        );
+      } else {
+        const how =
+          p.lastWeight > p.firstWeight
+            ? `重量が${p.firstWeight}→${p.lastWeight}kgに伸びた`
+            : `回数が${p.firstReps}→${p.lastReps}回に増えた`;
+        push(
+          "training",
+          5,
+          "good",
+          `${p.name}の総ボリューム(重量×回数)が1日あたり前半${fmtKg(p.firstVolume)}kg → 後半${fmtKg(p.lastVolume)}kgと${pct}%伸びています(${how}分)。この積み上げが続く限り、筋肉は増え続けます。`
+        );
+      }
+    }
+  }
+
+  // トレーニング全体の負荷量が、期間の後半で落ちていないか
+  if (m.firstHalfVolume > 0 && m.lastHalfVolume > 0) {
+    const ratio = m.lastHalfVolume / m.firstHalfVolume;
+    if (ratio <= 0.85) {
       push(
         "training",
-        2,
+        3,
         "warning",
-        `${p.name}の重量が期間の前半${p.firstAvg}kg・後半${p.lastAvg}kgとほぼ変わっていません。同じ重さを続けても筋肉は慣れてしまうので、2.5kg増やすか、回数を1〜2回増やすところから試してください。`
+        `トレーニング全体の総ボリュームが、期間の前半${m.firstHalfVolume.toLocaleString("ja-JP")}kgに対して後半${m.lastHalfVolume.toLocaleString("ja-JP")}kgと${Math.round((1 - ratio) * 100)}%落ちています。回数・セット数・頻度のどれかが減っているので、まずは元の量に戻すことを目標にしてください。`
       );
-    } else {
+    } else if (ratio >= 1.15) {
       push(
         "training",
         5,
         "good",
-        `${p.name}が前半${p.firstAvg}kg → 後半${p.lastAvg}kgと伸びています(+${diff}kg)。この「少しずつ重くする」流れが続く限り、筋肉は増え続けます。`
+        `トレーニング全体の総ボリュームが前半${m.firstHalfVolume.toLocaleString("ja-JP")}kg → 後半${m.lastHalfVolume.toLocaleString("ja-JP")}kgと${Math.round((ratio - 1) * 100)}%増えています。扱う量が増えている＝体が強くなっている、そのままの証拠です。`
       );
     }
   }
@@ -1950,6 +2035,8 @@ function renderTrends() {
     <div class="ts-item"><div class="k">体重ペース(週あたり)</div><div class="v">${metrics.weeklyRate === null ? "記録不足" : `${metrics.weeklyRate >= 0 ? "+" : ""}${metrics.weeklyRate}kg`}</div></div>
     <div class="ts-item"><div class="k">食事記録日数</div><div class="v">${metrics.loggedMealDays}/${metrics.totalDays}日</div></div>
     <div class="ts-item"><div class="k">トレーニング日数</div><div class="v">${metrics.workoutDays}/${metrics.totalDays}日</div></div>
+    <div class="ts-item"><div class="k">総ボリューム(重量×回数)</div><div class="v">${metrics.totalVolume > 0 ? `${metrics.totalVolume.toLocaleString("ja-JP")}kg` : "記録不足"}</div></div>
+    <div class="ts-item"><div class="k">総挙上回数</div><div class="v">${metrics.totalReps > 0 ? `${metrics.totalReps.toLocaleString("ja-JP")}回` : "記録不足"}</div></div>
   `;
 
   renderTrendChart("trendChart", metrics.weeklyBuckets);
