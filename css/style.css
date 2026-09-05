@@ -716,3 +716,86 @@ canvas { width: 100%; display: block; }
   background: var(--primary);
   flex-shrink: 0;
 }
+
+/* ============================================================
+   Interaction & polish upgrades
+   (押した時の反応・数字の見やすさ・アクセシビリティの微調整。
+    レイアウトや配色の骨格は変更しない)
+   ============================================================ */
+
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
+/* データの数字は桁を揃えて読みやすく */
+.macro-card .value,
+.target-summary .v,
+.weight-trend b,
+.list-item .macros,
+.ts-item .v {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ボタン・タップ要素の押下フィードバック */
+.btn,
+.tab-btn,
+.range-btn,
+.serving-btn,
+.exercise-picker-btn,
+.exercise-option,
+.food-chip button,
+.list-item .del {
+  transition: filter .15s ease, transform .1s ease, background-color .15s ease, color .15s ease;
+}
+
+.btn:hover { filter: brightness(0.96); }
+.btn:active { filter: brightness(0.9); transform: scale(0.97); }
+
+.range-btn:hover:not(.active) { background: var(--border); }
+.range-btn:active { transform: scale(0.95); }
+
+.serving-btn:hover:not(.active) { background: var(--border); }
+.serving-btn:active { transform: scale(0.97); }
+
+.exercise-picker-btn:hover { background: var(--border); }
+.exercise-option:hover, .exercise-option:active { transform: none; }
+.exercise-option:active { background: var(--primary-tint); }
+
+.food-chip button:hover { background: var(--danger-tint); color: var(--danger); }
+.food-chip button:active { transform: scale(0.88); }
+
+.list-item .del:hover { color: var(--danger); }
+.list-item .del:active { transform: scale(0.88); }
+
+/* 現在のタブがどこか、背景でも分かるように */
+.tab-btn { position: relative; z-index: 1; }
+.tab-btn.active::before {
+  content: "";
+  position: absolute;
+  inset: 2px 12%;
+  background: var(--primary-tint);
+  border-radius: 12px;
+  z-index: -1;
+}
+
+/* キーボード操作時のフォーカスを明示(アクセシビリティ) */
+.btn:focus-visible,
+.tab-btn:focus-visible,
+.range-btn:focus-visible,
+.serving-btn:focus-visible,
+.exercise-picker-btn:focus-visible,
+.exercise-option:focus-visible,
+.food-chip button:focus-visible,
+.list-item .del:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* アニメーションを抑えたい設定のユーザーへの配慮 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
