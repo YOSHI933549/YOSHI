@@ -1105,6 +1105,26 @@ function timeToMinutes(t) {
   return h * 60 + m;
 }
 
+// 種目名 -> 部位(胸/背中/脚/…)。種目リストの実体である
+// <select id="exerciseSelect"> の optgroup から引くので、二重管理にならない。
+// 自由入力の種目は対応する部位が無いので null。
+let exerciseGroupMap = null;
+function exerciseMuscleGroup(name) {
+  if (!exerciseGroupMap) {
+    exerciseGroupMap = {};
+    document.querySelectorAll("#exerciseSelect optgroup").forEach((g) => {
+      Array.from(g.children).forEach((opt) => {
+        exerciseGroupMap[opt.value] = g.label;
+      });
+    });
+  }
+  return exerciseGroupMap[name] || null;
+}
+
+function allMuscleGroups() {
+  return Array.from(document.querySelectorAll("#exerciseSelect optgroup")).map((g) => g.label);
+}
+
 function computeTrendMetrics(rangeKey) {
   const dates = trendPeriodDates(rangeKey);
 
@@ -1121,15 +1141,19 @@ function computeTrendMetrics(rangeKey) {
   let targetedDays = 0;
   const weeklyBuckets = []; // [{label, pct}] averaged protein % per 7-day chunk
 
-  // 区分(朝食/昼食/夕食/間食)ごとの平均栄養と平均時刻。
+  // 区分(朝食/昼食/夕食/間食)ごとの平均栄養・平均時刻・記録日数。
   // 「炭水化物が足りないなら、いつ・何を食べれば良いか」の材料にする。
-  const mealTypeAgg = {}; // { [type]: {carb, protein, fat, count, timeSum, timeCount} }
-  const addMealTypeAgg = (m) => {
-    const t = mealTypeAgg[m.type] || (mealTypeAgg[m.type] = { carb: 0, protein: 0, fat: 0, count: 0, timeSum: 0, timeCount: 0 });
+  const mealTypeAgg = {}; // { [type]: {cal, carb, protein, fat, count, days, timeSum, timeCount} }
+  const addMealTypeAgg = (m, isFirstOfDay) => {
+    const t =
+      mealTypeAgg[m.type] ||
+      (mealTypeAgg[m.type] = { cal: 0, carb: 0, protein: 0, fat: 0, count: 0, days: 0, timeSum: 0, timeCount: 0 });
+    t.cal += Number(m.calories) || 0;
     t.carb += Number(m.carbs) || 0;
     t.protein += Number(m.protein) || 0;
     t.fat += Number(m.fat) || 0;
     t.count++;
+    if (isFirstOfDay) t.days++;
     const mins = timeToMinutes(m.time);
     if (mins !== null) {
       t.timeSum += mins;
@@ -1137,9 +1161,28 @@ function computeTrendMetrics(rangeKey) {
     }
   };
 
+  // 食事の摂り方(1日の食事回数・最後の食事の時刻・たんぱく質の偏り)
+  let mealEntryCount = 0;
+  let lastMealMinSum = 0;
+  let lastMealMinCount = 0;
+  let proteinTopShareSum = 0;
+  let proteinTopShareCount = 0;
+
   // トレーニングした日/しない日で、食事の摂り方に違いがあるか比較する
   let workoutDayCalSum = 0, workoutDayCalCount = 0;
   let restDayCalSum = 0, restDayCalCount = 0;
+
+  // 平日と週末で食事の傾向が変わっていないか
+  let weekdayTargetCal = 0, weekdayActualCal = 0, weekdayDays = 0;
+  let weekendTargetCal = 0, weekendActualCal = 0, weekendDays = 0;
+
+  // トレーニングの中身(部位の偏り・重量の伸び・1日のセット数・空いた日数)
+  const muscleGroupCounts = {};
+  const exerciseSessions = {}; // { [name]: [{date, topWeight}] }
+  let setCountSum = 0;
+  let longestNoTrainGap = 0;
+  let curNoTrainGap = 0;
+  let sawWorkoutInPeriod = false;
 
   let bucketSumPct = 0;
   let bucketCount = 0;
@@ -1149,16 +1192,56 @@ function computeTrendMetrics(rangeKey) {
     const dayMeals = state.meals.filter((m) => m.date === date);
     const hasMeal = dayMeals.length > 0;
     if (hasMeal) loggedMealDays++;
-    const isWorkoutDay = state.workouts.some((w) => w.date === date);
+    const dayWorkouts = state.workouts.filter((w) => w.date === date);
+    const isWorkoutDay = dayWorkouts.length > 0;
     if (isWorkoutDay) workoutDays++;
+
+    // 期間中に最も長くトレーニングが空いた日数(最初の1回目より前は数えない)
+    if (isWorkoutDay) {
+      sawWorkoutInPeriod = true;
+      curNoTrainGap = 0;
+    } else if (sawWorkoutInPeriod) {
+      curNoTrainGap++;
+      if (curNoTrainGap > longestNoTrainGap) longestNoTrainGap = curNoTrainGap;
+    }
+
+    dayWorkouts.forEach((w) => {
+      const group = exerciseMuscleGroup(w.name);
+      if (group) muscleGroupCounts[group] = (muscleGroupCounts[group] || 0) + 1;
+      setCountSum += w.sets.length;
+      const topWeight = w.sets.reduce((mx, s) => Math.max(mx, Number(s.weight) || 0), 0);
+      if (topWeight > 0) {
+        if (!exerciseSessions[w.name]) exerciseSessions[w.name] = [];
+        exerciseSessions[w.name].push({ date, topWeight });
+      }
+    });
 
     const totalCal = dayMeals.reduce((s, m) => s + (Number(m.calories) || 0), 0);
     const totalProtein = dayMeals.reduce((s, m) => s + (Number(m.protein) || 0), 0);
     const totalFat = dayMeals.reduce((s, m) => s + (Number(m.fat) || 0), 0);
     const totalCarb = dayMeals.reduce((s, m) => s + (Number(m.carbs) || 0), 0);
-    dayMeals.forEach(addMealTypeAgg);
+
+    const seenTypesToday = new Set();
+    dayMeals.forEach((m) => {
+      const isFirstOfDay = !seenTypesToday.has(m.type);
+      seenTypesToday.add(m.type);
+      addMealTypeAgg(m, isFirstOfDay);
+    });
+    mealEntryCount += dayMeals.length;
 
     if (hasMeal) {
+      const mins = dayMeals.map((m) => timeToMinutes(m.time)).filter((v) => v !== null);
+      if (mins.length > 0) {
+        lastMealMinSum += Math.max(...mins); // その日の「最後の食事」の時刻
+        lastMealMinCount++;
+      }
+      if (totalProtein > 0) {
+        // たんぱく質が1食に偏っていないか(その日の最大の1食 ÷ 1日合計)
+        const topProtein = dayMeals.reduce((mx, m) => Math.max(mx, Number(m.protein) || 0), 0);
+        proteinTopShareSum += topProtein / totalProtein;
+        proteinTopShareCount++;
+      }
+
       if (isWorkoutDay) {
         workoutDayCalSum += totalCal;
         workoutDayCalCount++;
@@ -1181,6 +1264,17 @@ function computeTrendMetrics(rangeKey) {
       sumActualFat += totalFat;
       sumTargetCarb += targets.carb;
       sumActualCarb += totalCarb;
+
+      const dow = new Date(date + "T00:00:00").getDay();
+      if (dow === 0 || dow === 6) {
+        weekendTargetCal += targets.calories;
+        weekendActualCal += totalCal;
+        weekendDays++;
+      } else {
+        weekdayTargetCal += targets.calories;
+        weekdayActualCal += totalCal;
+        weekdayDays++;
+      }
 
       bucketSumPct += (totalProtein / targets.protein) * 100;
       bucketCount++;
@@ -1210,6 +1304,8 @@ function computeTrendMetrics(rangeKey) {
   Object.entries(mealTypeAgg).forEach(([type, t]) => {
     mealTypeSummary[type] = {
       count: t.count,
+      days: t.days,
+      avgCal: t.cal / t.count,
       avgCarb: t.carb / t.count,
       avgProtein: t.protein / t.count,
       avgFat: t.fat / t.count,
@@ -1217,8 +1313,39 @@ function computeTrendMetrics(rangeKey) {
     };
   });
 
+  const totalTypeCal = Object.values(mealTypeAgg).reduce((s, t) => s + t.cal, 0);
+  const snackCalShare =
+    totalTypeCal > 0 ? Math.round(((mealTypeAgg["間食"] ? mealTypeAgg["間食"].cal : 0) / totalTypeCal) * 100) : null;
+
   const avgCalWorkoutDay = workoutDayCalCount > 0 ? Math.round(workoutDayCalSum / workoutDayCalCount) : null;
   const avgCalRestDay = restDayCalCount > 0 ? Math.round(restDayCalSum / restDayCalCount) : null;
+  const avgMealsPerDay = loggedMealDays > 0 ? +(mealEntryCount / loggedMealDays).toFixed(1) : null;
+  const avgLastMealHour = lastMealMinCount > 0 ? +(lastMealMinSum / lastMealMinCount / 60).toFixed(1) : null;
+  const proteinTopShare =
+    proteinTopShareCount > 0 ? Math.round((proteinTopShareSum / proteinTopShareCount) * 100) : null;
+  const weekdayCalPct = weekdayDays >= 3 ? Math.round((weekdayActualCal / weekdayTargetCal) * 100) : null;
+  const weekendCalPct = weekendDays >= 2 ? Math.round((weekendActualCal / weekendTargetCal) * 100) : null;
+  const fatCalShare = sumActualCal > 0 ? Math.round(((sumActualFat * 9) / sumActualCal) * 100) : null;
+  const targetFatShare = state.profile ? Number(state.profile.fatRatio || 25) : null;
+  const avgSetsPerWorkoutDay = workoutDays > 0 ? +(setCountSum / workoutDays).toFixed(1) : null;
+
+  // 一番よく記録している種目の重量が、期間の前半と後半で伸びているか
+  let progression = null;
+  Object.entries(exerciseSessions).forEach(([name, sessions]) => {
+    if (sessions.length < 4) return;
+    if (progression && sessions.length <= progression.sessions) return;
+    const half = Math.floor(sessions.length / 2);
+    const firstAvg = sessions.slice(0, half).reduce((s, x) => s + x.topWeight, 0) / half;
+    const lastAvg = sessions.slice(-half).reduce((s, x) => s + x.topWeight, 0) / half;
+    progression = { name, sessions: sessions.length, firstAvg: +firstAvg.toFixed(1), lastAvg: +lastAvg.toFixed(1) };
+  });
+
+  // 最後にトレーニングしてから何日経ったか(期間ではなく全記録から見る)
+  const allWorkoutDates = state.workouts.map((w) => w.date).sort();
+  const lastWorkoutDate = allWorkoutDates.length ? allWorkoutDates[allWorkoutDates.length - 1] : null;
+  const daysSinceLastWorkout = lastWorkoutDate
+    ? Math.round((new Date(todayStr() + "T00:00:00") - new Date(lastWorkoutDate + "T00:00:00")) / 86400000)
+    : null;
 
   // Weight pace: kg/week between the first and last weigh-in inside the period.
   const periodWeights = state.weightLogs
@@ -1249,6 +1376,20 @@ function computeTrendMetrics(rangeKey) {
     avgCalRestDay,
     workoutDayCalCount,
     restDayCalCount,
+    avgMealsPerDay,
+    avgLastMealHour,
+    proteinTopShare,
+    snackCalShare,
+    weekdayCalPct,
+    weekendCalPct,
+    fatCalShare,
+    targetFatShare,
+    muscleGroupCounts,
+    avgSetsPerWorkoutDay,
+    longestNoTrainGap,
+    daysSinceLastWorkout,
+    progression,
+    weightLogDays: periodWeights.length,
     hasAnyData: loggedMealDays > 0 || workoutDays > 0 || periodWeights.length > 0,
   };
 }
@@ -1335,50 +1476,333 @@ const MACRO_ADVICE_CONFIG = [
   { key: "fat", label: "脂質", pctField: "avgFatPct", avgField: "avgFat", foods: ["ミックスナッツ", "チーズ", "サーモン"] },
 ];
 
+// 区分ごとに「その時間帯に足しやすい食品」。同じ栄養素を補う場合でも、
+// 間食に白米を勧めるような不自然な提案にならないよう、区分に合うものを優先する。
+const MEAL_TYPE_FOOD_HINTS = {
+  "朝食": ["食パン", "バナナ", "オートミール(乾)", "卵", "納豆", "ギリシャヨーグルト(無糖)", "チーズ"],
+  "昼食": ["白米(ごはん)", "鶏むね肉(皮なし)", "鶏ささみ", "ツナ缶(水煮)", "サーモン", "豚ロース(赤肉)"],
+  "夕食": ["白米(ごはん)", "鶏もも肉(皮なし)", "サーモン", "豚ロース(赤肉)", "牛もも肉(赤肉)", "豆腐(木綿)"],
+  "間食": ["バナナ", "プロテイン(NORM)", "ミックスナッツ", "ギリシャヨーグルト(無糖)", "チーズ"],
+};
+
+// その栄養素を補える食品のうち、区分に合うものがあればそれだけを提案する
+function foodsForMealType(foods, mealType) {
+  const hints = MEAL_TYPE_FOOD_HINTS[mealType];
+  if (hints) {
+    const matched = hints.filter((f) => foods.includes(f));
+    if (matched.length > 0) return matched.slice(0, 2);
+  }
+  return foods.slice(0, 2);
+}
+
+const ADVICE_MAX_ITEMS = 6; // 出しすぎても読まないので、上位いくつかに絞る
+const ADVICE_MAX_PER_CATEGORY = 2; // 同じ切り口ばかりにならないよう、分野ごとに上限を設ける
+
 // 「気づき」が目標との単純な過不足(達成率)を見るのに対して、こちらは
-// 「区分(朝食/昼食/夕食/間食)ごとの時間帯」や「トレーニング日/休養日」で
-// 記録を比較し、もう一段具体的な対策(いつ・何を)まで踏み込んで提案する。
+// 食事の時間帯・区分・回数、トレーニングの部位や重量の伸び、平日と週末の差、
+// 体重の動きなど複数の角度から記録を突き合わせ、具体的な対策まで踏み込む。
+// 各分析は candidate(候補)を積むだけで、最後に優先度と分野バランスで絞り込む。
 function generateExpertAdvice(m) {
-  const advice = [];
+  const cands = [];
+  const push = (cat, priority, tone, text) => cands.push({ cat, priority, tone, text });
   const types = Object.entries(m.mealTypeSummary).filter(([, t]) => t.count >= 2);
+  const hasEnoughMealData = m.loggedMealDays >= 3;
 
-  MACRO_ADVICE_CONFIG.forEach(({ label, pctField, avgField, foods }) => {
-    const pct = m[pctField];
-    if (pct === null || pct >= 90) return;
-    if (types.length < 2) return; // 区分を比較できるだけの記録がまだない
-
-    const [type, stat] = types.reduce((min, cur) => (cur[1][avgField] < min[1][avgField] ? cur : min));
-    const timePhrase = stat.avgHour !== null ? `(いつも${stat.avgHour}時台ごろ)` : "";
-    const foodPhrase = foods.slice(0, 2).join("・");
-    advice.push({
-      tone: "warning",
-      text: `${label}が目標の平均${pct}%と不足気味です。中でも${type}${timePhrase}の${label}が他の食事より少ない傾向があるので、${type}に${foodPhrase}を1品足すと補いやすいです。`,
-    });
-  });
-
-  if (m.workoutDayCalCount >= 2 && m.restDayCalCount >= 2) {
-    const diff = m.avgCalRestDay - m.avgCalWorkoutDay;
-    if (diff > 100) {
-      advice.push({
-        tone: "warning",
-        text: `トレーニングした日の摂取カロリーが、していない日より平均${diff}kcal少ない傾向があります(${m.avgCalWorkoutDay}kcal vs ${m.avgCalRestDay}kcal)。トレーニング後の食事を少し多めにすると、回復と筋肉の成長がスムーズになります。`,
+  // ---------- 栄養バランス ----------
+  // 不足している栄養素のうち、特に足りない2つだけを「いつ・何を」まで具体化する
+  if (hasEnoughMealData && types.length >= 2) {
+    MACRO_ADVICE_CONFIG.map((c) => ({ c, pct: m[c.pctField] }))
+      .filter((x) => x.pct !== null && x.pct < 90)
+      .sort((a, b) => a.pct - b.pct)
+      .slice(0, 2)
+      .forEach(({ c, pct }) => {
+        const [type, stat] = types.reduce((min, cur) => (cur[1][c.avgField] < min[1][c.avgField] ? cur : min));
+        const timePhrase = stat.avgHour !== null ? `(いつも${stat.avgHour}時台ごろ)` : "";
+        push(
+          "nutrition",
+          1,
+          "warning",
+          `${c.label}が目標の平均${pct}%と不足気味です。中でも${type}${timePhrase}の${c.label}が他の食事より少ないので、${type}に${foodsForMealType(c.foods, type).join("・")}を1品足すのが一番の近道です。`
+        );
       });
-    } else if (diff < -100) {
-      advice.push({
-        tone: "info",
-        text: `トレーニングした日の方が、していない日より平均${Math.abs(diff)}kcal多く食べられています(${m.avgCalWorkoutDay}kcal vs ${m.avgCalRestDay}kcal)。運動後にしっかり補給できている良い傾向です。`,
-      });
+  }
+
+  // 脂質の摂りすぎは、同じカロリーでも体脂肪に回りやすい
+  if (m.avgFatPct !== null && m.avgFatPct > 130 && hasEnoughMealData) {
+    push(
+      "nutrition",
+      2,
+      "warning",
+      `脂質が目標の平均${m.avgFatPct}%と多めです。同じカロリーなら、脂質より炭水化物から摂った方がトレーニングの力が出やすくなります。揚げ物や脂身の多い肉を、白米やオートミールに置き換えてみてください。`
+    );
+  }
+
+  // カロリーの内訳(P/F/C)そのものが目標配分からずれていないか
+  if (m.fatCalShare !== null && m.targetFatShare !== null && hasEnoughMealData) {
+    const gap = m.fatCalShare - m.targetFatShare;
+    if (gap >= 10) {
+      push(
+        "nutrition",
+        3,
+        "info",
+        `摂ったカロリーのうち脂質が${m.fatCalShare}%を占めています(目標は${m.targetFatShare}%)。脂質は少量でカロリーが高いので、ここを削ると食べる量を減らさずにバランスを整えられます。`
+      );
+    } else if (gap <= -10) {
+      push(
+        "nutrition",
+        3,
+        "info",
+        `摂ったカロリーのうち脂質は${m.fatCalShare}%と、目標の${m.targetFatShare}%より控えめです。脂質が少なすぎるとホルモンの働きが落ちるので、ミックスナッツやサーモンで少し足すと良いバランスになります。`
+      );
     }
   }
 
-  if (advice.length === 0) {
-    advice.push({
+  // ---------- 食べ方・タイミング ----------
+  // 朝食を抜きがちだと、1日の総量が足りなくなりやすい
+  const breakfast = m.mealTypeSummary["朝食"];
+  const breakfastDays = breakfast ? breakfast.days : 0;
+  if (m.loggedMealDays >= 5 && breakfastDays / m.loggedMealDays < 0.6) {
+    push(
+      "timing",
+      2,
+      "warning",
+      `食事を記録した${m.loggedMealDays}日のうち、朝食があったのは${breakfastDays}日だけです。朝を抜くと1日の合計が足りなくなりやすいので、卵・バナナ・食パンなど、用意が簡単なものだけでも入れてみてください。`
+    );
+  }
+
+  // たんぱく質は一度に使える量が限られるので、1食への偏りを見る
+  if (m.proteinTopShare !== null && m.proteinTopShare >= 50 && m.loggedMealDays >= 5) {
+    push(
+      "timing",
+      2,
+      "warning",
+      `1日のたんぱく質のうち平均${m.proteinTopShare}%を1食でまとめて摂っています。体が一度に使える量には限りがあるので、同じ量でも3食に分ける方が筋肉になりやすいです。`
+    );
+  }
+
+  // 食事回数が少ないと、増量に必要な量を詰め込みにくい
+  if (m.avgMealsPerDay !== null && m.avgMealsPerDay < 2.5 && m.loggedMealDays >= 5) {
+    push(
+      "timing",
+      3,
+      "info",
+      `1日の食事回数が平均${m.avgMealsPerDay}回です。増量中は1回の量を増やすより回数を増やす方が楽なので、間食にプロテインやミックスナッツを足すのがおすすめです。`
+    );
+  }
+
+  // 最後の食事が遅いと、睡眠の質と翌朝の食欲に影響する
+  if (m.avgLastMealHour !== null && m.avgLastMealHour >= 21 && m.loggedMealDays >= 5) {
+    const h = Math.floor(m.avgLastMealHour);
+    push(
+      "timing",
+      3,
+      "info",
+      `1日の最後の食事が平均${h}時台と遅めです。寝る2〜3時間前までに済ませると睡眠が深くなり、翌朝きちんとお腹が空くので朝食も入りやすくなります。`
+    );
+  }
+
+  // 間食に寄りすぎていないか
+  if (m.snackCalShare !== null && m.snackCalShare >= 30 && m.loggedMealDays >= 5) {
+    push(
+      "timing",
+      4,
+      "info",
+      `摂取カロリーの${m.snackCalShare}%が間食からです。間食は補助として便利ですが、食事の方でしっかり摂れると栄養バランスが安定します。`
+    );
+  }
+
+  // ---------- 生活リズム ----------
+  // 平日と週末で食事が変わっていないか
+  if (m.weekdayCalPct !== null && m.weekendCalPct !== null) {
+    const gap = m.weekdayCalPct - m.weekendCalPct;
+    if (gap >= 15) {
+      push(
+        "rhythm",
+        3,
+        "warning",
+        `週末のカロリーが平日より落ちています(平日${m.weekdayCalPct}% / 週末${m.weekendCalPct}%)。予定が読めない日ほど、朝のうちにプロテインやおにぎりを用意しておくと崩れにくくなります。`
+      );
+    } else if (gap <= -15) {
+      push(
+        "rhythm",
+        3,
+        "warning",
+        `平日のカロリーが週末より落ちています(平日${m.weekdayCalPct}% / 週末${m.weekendCalPct}%)。仕事の日は食事が後回しになりがちなので、机に置ける間食を常備しておくと安定します。`
+      );
+    }
+  }
+
+  // トレーニングした日にきちんと食べられているか
+  if (m.workoutDayCalCount >= 2 && m.restDayCalCount >= 2) {
+    const diff = m.avgCalRestDay - m.avgCalWorkoutDay;
+    if (diff > 100) {
+      push(
+        "rhythm",
+        2,
+        "warning",
+        `トレーニングした日の摂取カロリーが、していない日より平均${diff}kcal少ない傾向があります(${m.avgCalWorkoutDay}kcal vs ${m.avgCalRestDay}kcal)。動いた日ほど多く必要なので、トレーニング後の食事を一番しっかりにするのが理想です。`
+      );
+    } else if (diff < -100) {
+      push(
+        "rhythm",
+        5,
+        "good",
+        `トレーニングした日の方が平均${Math.abs(diff)}kcal多く食べられています(${m.avgCalWorkoutDay}kcal vs ${m.avgCalRestDay}kcal)。動いた日にしっかり補給できている、理想的なリズムです。`
+      );
+    }
+  }
+
+  // ---------- トレーニング ----------
+  const groupEntries = Object.entries(m.muscleGroupCounts);
+  const totalGroupSessions = groupEntries.reduce((s, [, n]) => s + n, 0);
+  if (totalGroupSessions >= 6) {
+    // やっていない部位(特に脚は後回しにされやすい)
+    const missing = allMuscleGroups().filter((g) => !m.muscleGroupCounts[g]);
+    if (missing.length > 0) {
+      const target = missing.includes("脚") ? "脚" : missing[0];
+      const extra =
+        target === "脚"
+          ? "脚は体で一番大きい筋肉なので、鍛えると全身のホルモン反応が高まり、上半身の伸びも良くなります。"
+          : "全身をひと通り回すと、見た目のバランスと関節への負担の両面で有利になります。";
+      push(
+        "training",
+        2,
+        "warning",
+        `この期間、${target}の種目が1回も記録されていません。${extra}週1回でも入れてみてください。`
+      );
+    }
+
+    // 特定の部位に偏っていないか
+    const [topGroup, topCount] = groupEntries.reduce((mx, cur) => (cur[1] > mx[1] ? cur : mx));
+    const topShare = Math.round((topCount / totalGroupSessions) * 100);
+    if (topShare >= 50 && missing.length === 0) {
+      push(
+        "training",
+        3,
+        "info",
+        `トレーニングの${topShare}%が${topGroup}に集中しています。同じ部位ばかりだと回復が追いつかず、伸びが止まりやすくなります。日ごとに部位を分けると全体が伸びます。`
+      );
+    }
+  }
+
+  // 同じ種目の重量が伸びているか(進歩性過負荷)
+  if (m.progression) {
+    const p = m.progression;
+    const diff = +(p.lastAvg - p.firstAvg).toFixed(1);
+    if (diff <= 0) {
+      push(
+        "training",
+        2,
+        "warning",
+        `${p.name}の重量が期間の前半${p.firstAvg}kg・後半${p.lastAvg}kgとほぼ変わっていません。同じ重さを続けても筋肉は慣れてしまうので、2.5kg増やすか、回数を1〜2回増やすところから試してください。`
+      );
+    } else {
+      push(
+        "training",
+        5,
+        "good",
+        `${p.name}が前半${p.firstAvg}kg → 後半${p.lastAvg}kgと伸びています(+${diff}kg)。この「少しずつ重くする」流れが続く限り、筋肉は増え続けます。`
+      );
+    }
+  }
+
+  // トレーニングの間隔が空きすぎていないか
+  if (m.daysSinceLastWorkout !== null && m.daysSinceLastWorkout >= 4) {
+    push(
+      "training",
+      2,
+      "warning",
+      `最後のトレーニングから${m.daysSinceLastWorkout}日空いています。筋肉は3日ほどで回復するので、間隔が空くほど元に戻りやすくなります。まずは短時間でも再開するのが効果的です。`
+    );
+  } else if (m.longestNoTrainGap >= 6 && m.totalDays >= 14) {
+    push(
+      "training",
+      3,
+      "info",
+      `この期間、最長で${m.longestNoTrainGap}日トレーニングが空いた時期がありました。1回あたりを短くしてでも、間隔を空けない方が結果につながります。`
+    );
+  }
+
+  // 1回あたりのボリューム(セット数)が少なすぎないか
+  if (m.avgSetsPerWorkoutDay !== null && m.avgSetsPerWorkoutDay < 6 && m.workoutDays >= 3) {
+    push(
+      "training",
+      4,
+      "info",
+      `トレーニング1日あたりのセット数が平均${m.avgSetsPerWorkoutDay}セットです。筋肉を増やす目安は1部位あたり週10セット前後なので、種目を1つ足すと成長が早まります。`
+    );
+  }
+
+  // ---------- 体重の動き ----------
+  if (m.weeklyRate !== null && m.avgCaloriePct !== null) {
+    if (Math.abs(m.weeklyRate) < 0.1 && m.avgCaloriePct >= 95) {
+      push(
+        "body",
+        2,
+        "warning",
+        `目標カロリーは達成できている(平均${m.avgCaloriePct}%)のに、体重は週${m.weeklyRate}kgでほぼ動いていません。実際の消費が想定より多いということなので、設定タブの「カロリー上乗せ」を+200kcalほど増やすのが次の一手です。`
+      );
+    }
+    if (m.weeklyRate > 0.5 && m.avgProteinPct !== null && m.avgProteinPct < 90) {
+      push(
+        "body",
+        2,
+        "warning",
+        `体重は週+${m.weeklyRate}kgと順調に増えていますが、たんぱく質が目標の${m.avgProteinPct}%です。この状態で増えている分は脂肪の割合が多くなりがちなので、増やすならまずたんぱく質からです。`
+      );
+    }
+  }
+
+  // 体重の記録が少ないと、そもそもペースが読めない
+  if (m.totalDays >= 14 && m.weightLogDays < Math.floor(m.totalDays / 7)) {
+    push(
+      "body",
+      4,
+      "info",
+      `この期間の体重記録は${m.weightLogDays}回です。増量は「週あたり何kg」で判断するので、曜日を決めて週1回、朝起きた直後に測るとペースが正確に見えます。`
+    );
+  }
+
+  // ---------- できている点 ----------
+  const macroPcts = [m.avgCaloriePct, m.avgProteinPct, m.avgFatPct, m.avgCarbPct];
+  if (macroPcts.every((p) => p !== null && p >= 90 && p <= 115)) {
+    push(
+      "praise",
+      5,
+      "good",
+      `カロリー・たんぱく質・脂質・炭水化物のすべてが目標の90〜115%に収まっています。ここまで整っていれば、あとは同じ生活を続けるだけで体は変わっていきます。`
+    );
+  }
+  if (m.totalDays >= 7 && m.loggedMealDays / m.totalDays >= 0.9) {
+    push(
+      "praise",
+      5,
+      "good",
+      `${m.totalDays}日中${m.loggedMealDays}日、食事を記録できています。記録が続いていること自体が、この分析の精度と結果を支えています。`
+    );
+  }
+
+  // 優先度順に並べ、同じ分野が続かないよう上限をかけて絞り込む
+  const perCat = {};
+  const picked = [];
+  cands
+    .sort((a, b) => a.priority - b.priority)
+    .forEach((c) => {
+      if (picked.length >= ADVICE_MAX_ITEMS) return;
+      perCat[c.cat] = perCat[c.cat] || 0;
+      if (perCat[c.cat] >= ADVICE_MAX_PER_CATEGORY) return;
+      perCat[c.cat]++;
+      picked.push(c);
+    });
+
+  if (picked.length === 0) {
+    picked.push({
       tone: "info",
-      text: "今のところ、時間帯や食事の種類によるはっきりした偏りは見つかりませんでした。記録が増えると、より具体的な提案ができるようになります。",
+      text: "今のところ、時間帯・食事の種類・トレーニング内容にはっきりした偏りは見つかりませんでした。記録が増えると、より具体的な提案ができるようになります。",
     });
   }
 
-  return advice;
+  return picked;
 }
 
 function renderTrends() {
