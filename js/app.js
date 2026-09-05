@@ -676,11 +676,29 @@ function workoutItemHTML(w, withDelete = true) {
 
 function renderWorkouts() {
   const dateStr = document.getElementById("workoutsDate").value || todayStr();
+  renderPrevWorkoutHint(dateStr);
   const items = state.workouts.filter((w) => w.date === dateStr);
   const el = document.getElementById("workoutsList");
   el.innerHTML = items.length
     ? items.map((w) => workoutItemHTML(w, true)).join("")
     : `<div class="empty-state">この日の記録はまだありません。</div>`;
+}
+
+// 選択中の日付より前で、直近にトレーニングを記録した日の種目を小さく表示する。
+// 「今日は何をやったか忘れた/前回と同じ部位を続けて避けたい」を一目で確認できるように。
+function renderPrevWorkoutHint(dateStr) {
+  const el = document.getElementById("prevWorkoutHint");
+  if (!el) return;
+  const priorDates = [...new Set(state.workouts.filter((w) => w.date < dateStr).map((w) => w.date))].sort();
+  const lastDate = priorDates[priorDates.length - 1];
+  if (!lastDate) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+  const names = [...new Set(state.workouts.filter((w) => w.date === lastDate).map((w) => w.name))];
+  el.classList.remove("hidden");
+  el.innerHTML = `<span>前回(${fmtDate(lastDate)})</span><b>${names.map(escapeHTML).join("・")}</b>`;
 }
 
 // -------------------------------------------------------------------------

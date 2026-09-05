@@ -471,6 +471,24 @@ input:focus, select:focus {
   line-height: 1.5;
 }
 
+.prev-workout-hint {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+}
+.prev-workout-hint b {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
