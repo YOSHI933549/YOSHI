@@ -1,41 +1,64 @@
 :root {
-  --bg: #f5f7f4;
-  --surface: #ffffff;
-  --surface-alt: #eef3ee;
-  --text: #1a2420;
-  --text-muted: #5c6b63;
-  --border: #dde5dd;
-  --primary: #1f7a5c;
-  --primary-dark: #155a43;
-  --primary-tint: #e2f3ea;
-  --accent-orange: #e0793a;
-  --accent-blue: #3a72c9;
-  --accent-purple: #8558c9;
-  --danger: #c0392b;
-  --danger-tint: #fbe6e3;
-  --shadow: 0 1px 3px rgba(20, 30, 25, 0.08), 0 1px 2px rgba(20, 30, 25, 0.06);
-  --radius: 14px;
+  /* 「メカニック(計器盤)」テーマ: 工場の操作パネルや車のメーターのような、
+     フラットで無骨な質感。角丸はほぼ無し、数字は電光表示風のモノスペースで
+     読ませる。色の役割(cal=橙, protein=緑, fat=紫, carb=青)は元のまま
+     引き継ぎ、色そのものを計器盤らしい彩度・トーンに寄せてある。 */
+  --bg: #eceeea;
+  --surface: #f6f7f3;
+  --surface-alt: #e1e5dd;
+  --text: #1b1d1a;
+  --text-muted: #63675d;
+  --border: #cbcfc4;
+  --primary: #2f8f3e;
+  --primary-dark: #1f6b2c;
+  --primary-tint: #dcefdd;
+  --accent-orange: #e2551c;
+  --accent-blue: #2e7dbd;
+  --accent-purple: #6a5b9e;
+  --danger: #c23b1e;
+  --danger-tint: #fbe3da;
+  --shadow: 0 1px 2px rgba(20, 20, 15, 0.08);
+  --radius: 3px;
+  --font-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --font-mono: "Share Tech Mono", "IBM Plex Mono", monospace;
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #121815;
-    --surface: #1b2420;
-    --surface-alt: #202b25;
-    --text: #eef3ee;
-    --text-muted: #9db0a5;
-    --border: #2b3a32;
-    --primary: #3fcb93;
-    --primary-dark: #2fa87a;
-    --primary-tint: #1c332a;
-    --accent-orange: #f0965d;
-    --accent-blue: #6ea3ec;
-    --accent-purple: #ab8bec;
-    --danger: #e2685a;
-    --danger-tint: #3a2320;
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --bg: #16181a;
+    --surface: #1f2220;
+    --surface-alt: #262a26;
+    --text: #e7e6de;
+    --text-muted: #8a8d84;
+    --border: #34382f;
+    --primary: #5fd66f;
+    --primary-dark: #3fae54;
+    --primary-tint: #1d3320;
+    --accent-orange: #ff6a30;
+    --accent-blue: #55b4e6;
+    --accent-purple: #a58de0;
+    --danger: #ff5a45;
+    --danger-tint: #3a2018;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   }
+}
+:root[data-theme="dark"] {
+  --bg: #16181a;
+  --surface: #1f2220;
+  --surface-alt: #262a26;
+  --text: #e7e6de;
+  --text-muted: #8a8d84;
+  --border: #34382f;
+  --primary: #5fd66f;
+  --primary-dark: #3fae54;
+  --primary-tint: #1d3320;
+  --accent-orange: #ff6a30;
+  --accent-blue: #55b4e6;
+  --accent-purple: #a58de0;
+  --danger: #ff5a45;
+  --danger-tint: #3a2018;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 * { box-sizing: border-box; }
@@ -48,6 +71,10 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+h1, h2, h3, .tab-btn span, .macro-card .label, .card-title-mono {
+  font-family: var(--font-display);
+}
+
 body {
   padding-bottom: 84px;
 }
@@ -55,10 +82,24 @@ body {
 .hidden { display: none !important; }
 
 .app-header {
+  position: relative;
   padding: 20px 16px 16px;
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: #fff;
 }
+.app-header::before,
+.app-header::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.3), 0 0.5px 0 rgba(255, 255, 255, 0.15);
+}
+.app-header::before { left: 8px; }
+.app-header::after { right: 8px; }
 
 .brand {
   display: flex;
@@ -176,15 +217,31 @@ main#app {
 }
 
 .macro-card {
+  position: relative;
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 13px 12px 12px;
   box-shadow: var(--shadow);
 }
 
+/* 計器盤の縁のような、ハザードストライプ(縞模様)を各カードの上端に */
+.macro-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+.macro-card.cal::before { background-image: repeating-linear-gradient(135deg, var(--accent-orange) 0 5px, transparent 5px 10px); }
+.macro-card.protein::before { background-image: repeating-linear-gradient(135deg, var(--primary) 0 5px, transparent 5px 10px); }
+.macro-card.fat::before { background-image: repeating-linear-gradient(135deg, var(--accent-purple) 0 5px, transparent 5px 10px); }
+.macro-card.carb::before { background-image: repeating-linear-gradient(135deg, var(--accent-blue) 0 5px, transparent 5px 10px); }
+
 .macro-card .label {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-muted);
   display: flex;
   justify-content: space-between;
@@ -192,6 +249,7 @@ main#app {
 }
 
 .macro-card .value {
+  font-family: var(--font-mono);
   font-size: 18px;
   font-weight: 700;
   margin-bottom: 8px;
@@ -205,21 +263,24 @@ main#app {
 
 .bar-track {
   height: 8px;
-  border-radius: 5px;
+  border-radius: 1px;
   background: var(--surface-alt);
   overflow: hidden;
 }
 
 .bar-fill {
   height: 100%;
-  border-radius: 5px;
+  border-radius: 1px;
   transition: width .25s ease;
+  /* 目盛りが並んだような、区切り線入りの表示(計器盤のセグメントバー風) */
+  background-image: repeating-linear-gradient(90deg, transparent 0 5px, var(--surface-alt) 5px 7px);
+  background-color: var(--text-muted);
 }
 
-.macro-card.cal .bar-fill { background: var(--accent-orange); }
-.macro-card.protein .bar-fill { background: var(--primary); }
-.macro-card.fat .bar-fill { background: var(--accent-purple); }
-.macro-card.carb .bar-fill { background: var(--accent-blue); }
+.macro-card.cal .bar-fill { background-color: var(--accent-orange); }
+.macro-card.protein .bar-fill { background-color: var(--primary); }
+.macro-card.fat .bar-fill { background-color: var(--accent-purple); }
+.macro-card.carb .bar-fill { background-color: var(--accent-blue); }
 
 form.form label {
   display: flex;
@@ -276,7 +337,7 @@ form.form label {
   font-weight: 600;
   font-size: 13.5px;
   padding: 9px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 .serving-btn.active {
@@ -300,7 +361,7 @@ form.form label {
   gap: 6px;
   background: var(--surface-alt);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: 6px 8px 6px 12px;
   font-size: 12.5px;
   color: var(--text);
@@ -328,7 +389,7 @@ input[type="time"],
 select {
   font-size: 15px;
   padding: 9px 10px;
-  border-radius: 9px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface-alt);
   color: var(--text);
@@ -351,7 +412,7 @@ input:focus, select:focus {
   width: 100%;
   font-size: 15px;
   padding: 7px 10px;
-  border-radius: 9px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface-alt);
   color: var(--text);
@@ -400,7 +461,7 @@ input:focus, select:focus {
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 6px;
 }
@@ -420,7 +481,7 @@ input:focus, select:focus {
   padding: 7px 8px;
   border: none;
   background: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: pointer;
   color: var(--text);
   font-size: 14px;
@@ -458,7 +519,7 @@ input:focus, select:focus {
 
 .photo-preview {
   max-width: 160px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   margin: 4px 0 12px;
   display: block;
   border: 1px solid var(--border);
@@ -480,7 +541,7 @@ input:focus, select:focus {
   color: var(--text-muted);
   background: var(--surface-alt);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 9px 12px;
   margin-bottom: 12px;
 }
@@ -495,10 +556,11 @@ input:focus, select:focus {
   justify-content: center;
   gap: 6px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 11px 16px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   cursor: pointer;
   background: var(--surface-alt);
   color: var(--text);
@@ -556,7 +618,7 @@ input:focus, select:focus {
   gap: 10px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--surface-alt);
   align-items: flex-start;
 }
@@ -565,7 +627,7 @@ input:focus, select:focus {
   width: 52px;
   height: 52px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: var(--radius);
   flex-shrink: 0;
 }
 
@@ -584,11 +646,12 @@ input:focus, select:focus {
 }
 
 .list-item .title-row .tag {
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--primary);
   background: var(--primary-tint);
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius);
   white-space: nowrap;
 }
 
@@ -599,6 +662,7 @@ input:focus, select:focus {
 }
 
 .list-item .macros {
+  font-family: var(--font-mono);
   font-size: 12px;
   margin-top: 4px;
   display: flex;
@@ -626,11 +690,11 @@ input:focus, select:focus {
 
 .target-summary .ts-item {
   background: var(--surface-alt);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 10px;
 }
 .target-summary .ts-item .k { font-size: 11.5px; color: var(--text-muted); }
-.target-summary .ts-item .v { font-size: 16px; font-weight: 700; margin-top: 2px; }
+.target-summary .ts-item .v { font-family: var(--font-mono); font-size: 16px; font-weight: 700; margin-top: 2px; }
 
 .toast {
   position: fixed;
@@ -640,13 +704,23 @@ input:focus, select:focus {
   background: var(--text);
   color: var(--bg);
   padding: 10px 18px;
-  border-radius: 999px;
+  border-radius: var(--radius);
   font-size: 13px;
   z-index: 50;
   box-shadow: var(--shadow);
 }
 
 canvas { width: 100%; display: block; }
+
+/* グラフを載せているカードには、オシロスコープ画面のような薄いグリッドを敷く */
+.card:has(canvas) {
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--border) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 55%, transparent) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-position: -1px -1px;
+}
 
 .chart-head {
   display: flex;
@@ -662,7 +736,8 @@ canvas { width: 100%; display: block; }
   display: flex;
   gap: 4px;
   background: var(--surface-alt);
-  border-radius: 999px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 3px;
 }
 
@@ -670,10 +745,11 @@ canvas { width: 100%; display: block; }
   border: none;
   background: transparent;
   color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: 11.5px;
   font-weight: 600;
   padding: 5px 10px;
-  border-radius: 999px;
+  border-radius: 1px;
   cursor: pointer;
 }
 
@@ -690,7 +766,7 @@ canvas { width: 100%; display: block; }
   color: var(--text-muted);
   margin-bottom: 10px;
 }
-.weight-trend b { color: var(--text); font-size: 13.5px; }
+.weight-trend b { color: var(--text); font-family: var(--font-mono); font-size: 13.5px; }
 .weight-trend .up { color: var(--accent-orange); }
 .weight-trend .down { color: var(--accent-blue); }
 
@@ -705,7 +781,7 @@ canvas { width: 100%; display: block; }
   gap: 10px;
   align-items: flex-start;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--surface-alt);
   border-left: 3px solid var(--border);
   font-size: 13px;

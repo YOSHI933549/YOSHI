@@ -852,13 +852,13 @@ function renderLineChart(canvasId, points, days, opts) {
 
   if (windowed.length === 0) {
     ctx.fillStyle = muted;
-    ctx.font = "12px sans-serif";
+    ctx.font = "12px 'Share Tech Mono', monospace";
     ctx.fillText(opts.noDataText, 8, cssHeight / 2);
     return;
   }
   if (windowed.length === 1) {
     ctx.fillStyle = muted;
-    ctx.font = "12px sans-serif";
+    ctx.font = "12px 'Share Tech Mono', monospace";
     ctx.fillText(opts.singlePointText(windowed[0].value, windowed[0].date), 8, cssHeight / 2);
     return;
   }
@@ -872,10 +872,10 @@ function renderLineChart(canvasId, points, days, opts) {
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = text;
-  ctx.font = "bold 15px sans-serif";
+  ctx.font = "bold 15px 'Share Tech Mono', monospace";
   const headline = opts.headline(latest.value);
   ctx.fillText(headline, 8, 14);
-  ctx.font = "10px sans-serif";
+  ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.fillStyle = muted;
   ctx.fillText(fmtDate(latest.date), 8 + ctx.measureText(headline).width + 22, 14);
 
@@ -904,7 +904,7 @@ function renderLineChart(canvasId, points, days, opts) {
   // horizontal gridlines + y-axis labels on the right
   ctx.strokeStyle = border;
   ctx.fillStyle = muted;
-  ctx.font = "10px sans-serif";
+  ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.lineWidth = 1;
   const gridLines = 3;
   for (let i = 0; i <= gridLines; i++) {
@@ -937,7 +937,7 @@ function renderLineChart(canvasId, points, days, opts) {
   ctx.restore();
 
   ctx.fillStyle = muted;
-  ctx.font = "10px sans-serif";
+  ctx.font = "10px 'Share Tech Mono', monospace";
   labelIndices.forEach((i, idx) => {
     const label = fmtDate(windowed[i].date);
     const w = ctx.measureText(label).width;
@@ -1305,7 +1305,7 @@ function renderTrendChart(canvasId, buckets) {
 
   if (buckets.length === 0) {
     ctx.fillStyle = muted;
-    ctx.font = "12px sans-serif";
+    ctx.font = "12px 'Share Tech Mono', monospace";
     ctx.fillText("食事の記録が足りないため、週別グラフを表示できません。", 8, cssHeight / 2);
     return;
   }
@@ -1323,7 +1323,7 @@ function renderTrendChart(canvasId, buckets) {
   // gridlines
   ctx.strokeStyle = border;
   ctx.fillStyle = muted;
-  ctx.font = "10px sans-serif";
+  ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.lineWidth = 1;
   [0, 50, 100].forEach((v) => {
     if (v > maxVal) return;
@@ -1357,7 +1357,7 @@ function renderTrendChart(canvasId, buckets) {
 
   // x labels (first/last only to avoid crowding)
   ctx.fillStyle = muted;
-  ctx.font = "10px sans-serif";
+  ctx.font = "10px 'Share Tech Mono', monospace";
   const firstLabel = buckets[0].label;
   ctx.fillText(firstLabel, padL, cssHeight - 6);
   if (buckets.length > 1) {
