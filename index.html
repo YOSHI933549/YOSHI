@@ -39,7 +39,7 @@
   <button class="tab-btn" data-tab="meals">🍽️<span>食事</span></button>
   <button class="tab-btn" data-tab="workouts">🏋️<span>筋トレ</span></button>
   <button class="tab-btn" data-tab="weight">⚖️<span>体重</span></button>
-  <button class="tab-btn" data-tab="trends">📈<span>傾向</span></button>
+  <button class="tab-btn" data-tab="trends">📈<span>分析</span></button>
   <button class="tab-btn" data-tab="settings">⚙️<span>設定</span></button>
 </nav>
 
@@ -346,7 +346,7 @@
   <!-- ============ TRENDS ============ -->
   <section class="tab-panel" id="panel-trends">
     <div class="panel-head">
-      <h2>傾向</h2>
+      <h2>分析</h2>
     </div>
 
     <div class="card">
@@ -363,7 +363,7 @@
     </div>
 
     <div id="trendsEmpty" class="notice hidden">
-      <p>この期間の記録がまだありません。食事・体重・トレーニングを記録すると、ここに傾向と気づきが表示されます。</p>
+      <p>この期間の記録がまだありません。食事・体重・トレーニングを記録すると、ここに分析とアドバイスが表示されます。</p>
     </div>
 
     <div id="trendsContent">
@@ -380,6 +380,12 @@
       <div class="card">
         <h3>気づき</h3>
         <div id="trendInsights" class="insight-list"></div>
+      </div>
+
+      <div class="card">
+        <h3>専門家アドバイス</h3>
+        <p class="hint" style="margin-top:-6px">記録の「時間帯」「食事の種類」「トレーニングした日/しない日」を比較して、具体的な対策を提案します。</p>
+        <div id="expertAdvice" class="insight-list"></div>
       </div>
     </div>
   </section>

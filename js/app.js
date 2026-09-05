@@ -1097,6 +1097,14 @@ function trendPeriodDates(rangeKey) {
   return dates;
 }
 
+// "HH:MM" -> 分(0-1439)。壊れた/空の時刻はnull
+function timeToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = t.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
 function computeTrendMetrics(rangeKey) {
   const dates = trendPeriodDates(rangeKey);
 
@@ -1106,8 +1114,32 @@ function computeTrendMetrics(rangeKey) {
   let sumActualCal = 0;
   let sumTargetProtein = 0;
   let sumActualProtein = 0;
+  let sumTargetFat = 0;
+  let sumActualFat = 0;
+  let sumTargetCarb = 0;
+  let sumActualCarb = 0;
   let targetedDays = 0;
   const weeklyBuckets = []; // [{label, pct}] averaged protein % per 7-day chunk
+
+  // 区分(朝食/昼食/夕食/間食)ごとの平均栄養と平均時刻。
+  // 「炭水化物が足りないなら、いつ・何を食べれば良いか」の材料にする。
+  const mealTypeAgg = {}; // { [type]: {carb, protein, fat, count, timeSum, timeCount} }
+  const addMealTypeAgg = (m) => {
+    const t = mealTypeAgg[m.type] || (mealTypeAgg[m.type] = { carb: 0, protein: 0, fat: 0, count: 0, timeSum: 0, timeCount: 0 });
+    t.carb += Number(m.carbs) || 0;
+    t.protein += Number(m.protein) || 0;
+    t.fat += Number(m.fat) || 0;
+    t.count++;
+    const mins = timeToMinutes(m.time);
+    if (mins !== null) {
+      t.timeSum += mins;
+      t.timeCount++;
+    }
+  };
+
+  // トレーニングした日/しない日で、食事の摂り方に違いがあるか比較する
+  let workoutDayCalSum = 0, workoutDayCalCount = 0;
+  let restDayCalSum = 0, restDayCalCount = 0;
 
   let bucketSumPct = 0;
   let bucketCount = 0;
@@ -1117,10 +1149,24 @@ function computeTrendMetrics(rangeKey) {
     const dayMeals = state.meals.filter((m) => m.date === date);
     const hasMeal = dayMeals.length > 0;
     if (hasMeal) loggedMealDays++;
-    if (state.workouts.some((w) => w.date === date)) workoutDays++;
+    const isWorkoutDay = state.workouts.some((w) => w.date === date);
+    if (isWorkoutDay) workoutDays++;
 
     const totalCal = dayMeals.reduce((s, m) => s + (Number(m.calories) || 0), 0);
     const totalProtein = dayMeals.reduce((s, m) => s + (Number(m.protein) || 0), 0);
+    const totalFat = dayMeals.reduce((s, m) => s + (Number(m.fat) || 0), 0);
+    const totalCarb = dayMeals.reduce((s, m) => s + (Number(m.carbs) || 0), 0);
+    dayMeals.forEach(addMealTypeAgg);
+
+    if (hasMeal) {
+      if (isWorkoutDay) {
+        workoutDayCalSum += totalCal;
+        workoutDayCalCount++;
+      } else {
+        restDayCalSum += totalCal;
+        restDayCalCount++;
+      }
+    }
 
     const weightEntry = getWeightAsOf(date);
     const targets = state.profile && weightEntry ? computeTargets(state.profile, weightEntry.weight) : null;
@@ -1131,6 +1177,10 @@ function computeTrendMetrics(rangeKey) {
       sumActualCal += totalCal;
       sumTargetProtein += targets.protein;
       sumActualProtein += totalProtein;
+      sumTargetFat += targets.fat;
+      sumActualFat += totalFat;
+      sumTargetCarb += targets.carb;
+      sumActualCarb += totalCarb;
 
       bucketSumPct += (totalProtein / targets.protein) * 100;
       bucketCount++;
@@ -1149,9 +1199,26 @@ function computeTrendMetrics(rangeKey) {
 
   const avgCaloriePct = targetedDays > 0 ? Math.round((sumActualCal / sumTargetCal) * 100) : null;
   const avgProteinPct = targetedDays > 0 ? Math.round((sumActualProtein / sumTargetProtein) * 100) : null;
+  const avgFatPct = targetedDays > 0 ? Math.round((sumActualFat / sumTargetFat) * 100) : null;
+  const avgCarbPct = targetedDays > 0 ? Math.round((sumActualCarb / sumTargetCarb) * 100) : null;
   const avgCalDiff = targetedDays > 0 ? Math.round(sumTargetCal / targetedDays - sumActualCal / targetedDays) : null;
   const avgProteinDiff =
     targetedDays > 0 ? Math.round(sumTargetProtein / targetedDays - sumActualProtein / targetedDays) : null;
+
+  // 区分ごとの平均値(1回あたり)に変換。時刻は分の平均を「H時台」に丸める
+  const mealTypeSummary = {};
+  Object.entries(mealTypeAgg).forEach(([type, t]) => {
+    mealTypeSummary[type] = {
+      count: t.count,
+      avgCarb: t.carb / t.count,
+      avgProtein: t.protein / t.count,
+      avgFat: t.fat / t.count,
+      avgHour: t.timeCount > 0 ? Math.round(t.timeSum / t.timeCount / 60) % 24 : null,
+    };
+  });
+
+  const avgCalWorkoutDay = workoutDayCalCount > 0 ? Math.round(workoutDayCalSum / workoutDayCalCount) : null;
+  const avgCalRestDay = restDayCalCount > 0 ? Math.round(restDayCalSum / restDayCalCount) : null;
 
   // Weight pace: kg/week between the first and last weigh-in inside the period.
   const periodWeights = state.weightLogs
@@ -1171,10 +1238,17 @@ function computeTrendMetrics(rangeKey) {
     workoutDays,
     avgCaloriePct,
     avgProteinPct,
+    avgFatPct,
+    avgCarbPct,
     avgCalDiff,
     avgProteinDiff,
     weeklyRate,
     weeklyBuckets,
+    mealTypeSummary,
+    avgCalWorkoutDay,
+    avgCalRestDay,
+    workoutDayCalCount,
+    restDayCalCount,
     hasAnyData: loggedMealDays > 0 || workoutDays > 0 || periodWeights.length > 0,
   };
 }
@@ -1253,6 +1327,60 @@ function generateInsights(m) {
   return insights;
 }
 
+// 栄養素ごとに「不足時に薦めやすい食品」。既存の食材選択肢(index.html)の
+// value属性と同じ表記にしてあり、そのまま「食事」タブで選べる。
+const MACRO_ADVICE_CONFIG = [
+  { key: "carb", label: "炭水化物", pctField: "avgCarbPct", avgField: "avgCarb", foods: ["白米(ごはん)", "食パン", "バナナ", "オートミール(乾)"] },
+  { key: "protein", label: "たんぱく質", pctField: "avgProteinPct", avgField: "avgProtein", foods: ["鶏ささみ", "プロテイン(NORM)", "卵", "納豆"] },
+  { key: "fat", label: "脂質", pctField: "avgFatPct", avgField: "avgFat", foods: ["ミックスナッツ", "チーズ", "サーモン"] },
+];
+
+// 「気づき」が目標との単純な過不足(達成率)を見るのに対して、こちらは
+// 「区分(朝食/昼食/夕食/間食)ごとの時間帯」や「トレーニング日/休養日」で
+// 記録を比較し、もう一段具体的な対策(いつ・何を)まで踏み込んで提案する。
+function generateExpertAdvice(m) {
+  const advice = [];
+  const types = Object.entries(m.mealTypeSummary).filter(([, t]) => t.count >= 2);
+
+  MACRO_ADVICE_CONFIG.forEach(({ label, pctField, avgField, foods }) => {
+    const pct = m[pctField];
+    if (pct === null || pct >= 90) return;
+    if (types.length < 2) return; // 区分を比較できるだけの記録がまだない
+
+    const [type, stat] = types.reduce((min, cur) => (cur[1][avgField] < min[1][avgField] ? cur : min));
+    const timePhrase = stat.avgHour !== null ? `(いつも${stat.avgHour}時台ごろ)` : "";
+    const foodPhrase = foods.slice(0, 2).join("・");
+    advice.push({
+      tone: "warning",
+      text: `${label}が目標の平均${pct}%と不足気味です。中でも${type}${timePhrase}の${label}が他の食事より少ない傾向があるので、${type}に${foodPhrase}を1品足すと補いやすいです。`,
+    });
+  });
+
+  if (m.workoutDayCalCount >= 2 && m.restDayCalCount >= 2) {
+    const diff = m.avgCalRestDay - m.avgCalWorkoutDay;
+    if (diff > 100) {
+      advice.push({
+        tone: "warning",
+        text: `トレーニングした日の摂取カロリーが、していない日より平均${diff}kcal少ない傾向があります(${m.avgCalWorkoutDay}kcal vs ${m.avgCalRestDay}kcal)。トレーニング後の食事を少し多めにすると、回復と筋肉の成長がスムーズになります。`,
+      });
+    } else if (diff < -100) {
+      advice.push({
+        tone: "info",
+        text: `トレーニングした日の方が、していない日より平均${Math.abs(diff)}kcal多く食べられています(${m.avgCalWorkoutDay}kcal vs ${m.avgCalRestDay}kcal)。運動後にしっかり補給できている良い傾向です。`,
+      });
+    }
+  }
+
+  if (advice.length === 0) {
+    advice.push({
+      tone: "info",
+      text: "今のところ、時間帯や食事の種類によるはっきりした偏りは見つかりませんでした。記録が増えると、より具体的な提案ができるようになります。",
+    });
+  }
+
+  return advice;
+}
+
 function renderTrends() {
   const metrics = computeTrendMetrics(trendRange);
   const emptyEl = document.getElementById("trendsEmpty");
@@ -1271,6 +1399,8 @@ function renderTrends() {
   statsEl.innerHTML = `
     <div class="ts-item"><div class="k">平均カロリー達成率</div><div class="v">${pct(metrics.avgCaloriePct)}</div></div>
     <div class="ts-item"><div class="k">平均たんぱく質達成率</div><div class="v">${pct(metrics.avgProteinPct)}</div></div>
+    <div class="ts-item"><div class="k">平均脂質達成率</div><div class="v">${pct(metrics.avgFatPct)}</div></div>
+    <div class="ts-item"><div class="k">平均炭水化物達成率</div><div class="v">${pct(metrics.avgCarbPct)}</div></div>
     <div class="ts-item"><div class="k">体重ペース(週あたり)</div><div class="v">${metrics.weeklyRate === null ? "記録不足" : `${metrics.weeklyRate >= 0 ? "+" : ""}${metrics.weeklyRate}kg`}</div></div>
     <div class="ts-item"><div class="k">食事記録日数</div><div class="v">${metrics.loggedMealDays}/${metrics.totalDays}日</div></div>
     <div class="ts-item"><div class="k">トレーニング日数</div><div class="v">${metrics.workoutDays}/${metrics.totalDays}日</div></div>
@@ -1278,9 +1408,15 @@ function renderTrends() {
 
   renderTrendChart("trendChart", metrics.weeklyBuckets);
 
-  const insightsEl = document.getElementById("trendInsights");
   const icons = { good: "✅", warning: "⚠️", info: "💡" };
+
+  const insightsEl = document.getElementById("trendInsights");
   insightsEl.innerHTML = generateInsights(metrics)
+    .map((i) => `<div class="insight-item ${i.tone}"><span class="icon">${icons[i.tone]}</span><span>${escapeHTML(i.text)}</span></div>`)
+    .join("");
+
+  const adviceEl = document.getElementById("expertAdvice");
+  adviceEl.innerHTML = generateExpertAdvice(metrics)
     .map((i) => `<div class="insight-item ${i.tone}"><span class="icon">${icons[i.tone]}</span><span>${escapeHTML(i.text)}</span></div>`)
     .join("");
 }
