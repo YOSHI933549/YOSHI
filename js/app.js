@@ -1097,6 +1097,25 @@ function trendPeriodDates(rangeKey) {
   return dates;
 }
 
+// メニュー名から「何を食べたか」を大まかに分類するための言葉。
+// カロリー・PFCの「量」だけでは見えない栄養の偏り(野菜・魚・果物が
+// 出てこない等)を拾うために使う。完全な判定ではなく傾向の目安。
+const FOOD_CATEGORY_KEYWORDS = {
+  "野菜": ["野菜", "サラダ", "ブロッコリー", "キャベツ", "レタス", "トマト", "きゅうり", "ほうれん草", "小松菜", "にんじん", "人参", "玉ねぎ", "玉ネギ", "ピーマン", "なす", "ナス", "白菜", "大根", "ごぼう", "アスパラ", "オクラ", "かぼちゃ", "もやし", "きのこ", "キノコ", "しめじ", "えのき", "まいたけ", "しいたけ", "わかめ", "海藻", "ひじき", "味噌汁", "みそ汁"],
+  "魚": ["サーモン", "鮭", "まぐろ", "マグロ", "ツナ", "さば", "サバ", "鯖", "いわし", "イワシ", "あじ", "アジ", "ぶり", "ブリ", "たら", "タラ", "えび", "エビ", "いか", "イカ", "魚", "刺身", "寿司", "すし"],
+  "肉": ["鶏", "豚", "牛", "肉", "ハム", "ベーコン", "ソーセージ", "ステーキ", "焼肉", "ハンバーグ", "からあげ", "唐揚げ"],
+  "卵": ["卵", "たまご", "玉子", "オムレツ", "目玉焼き"],
+  "乳製品": ["ヨーグルト", "チーズ", "牛乳", "ミルク"],
+  "大豆": ["豆腐", "納豆", "大豆", "豆乳", "枝豆", "厚揚げ", "味噌", "みそ"],
+  "果物": ["バナナ", "りんご", "リンゴ", "みかん", "オレンジ", "いちご", "イチゴ", "ぶどう", "キウイ", "果物", "フルーツ", "ブルーベリー"],
+  "ナッツ": ["ナッツ", "アーモンド", "くるみ", "クルミ", "カシュー"],
+  "主食": ["ごはん", "ご飯", "白米", "玄米", "米", "パン", "麺", "パスタ", "うどん", "そば", "ラーメン", "オートミール", "シリアル", "餅", "もち"],
+  "プロテイン": ["プロテイン"],
+};
+
+// たんぱく質を摂れる食品グループ(種類が偏っていないかを見る)
+const PROTEIN_SOURCE_CATEGORIES = ["肉", "魚", "卵", "乳製品", "大豆", "プロテイン"];
+
 // "HH:MM" -> 分(0-1439)。壊れた/空の時刻はnull
 function timeToMinutes(t) {
   if (!t) return null;
@@ -1160,6 +1179,11 @@ function computeTrendMetrics(rangeKey) {
       t.timeCount++;
     }
   };
+
+  // 何を食べているか(野菜・魚・果物などが食卓に登場した日数)と、
+  // メニューの種類数。「量」ではなく「中身」の偏りを見るための材料。
+  const foodCatDays = {}; // { [カテゴリ]: 登場した日数 }
+  const mealNameSet = new Set();
 
   // 食事の摂り方(1日の食事回数・最後の食事の時刻・たんぱく質の偏り)
   let mealEntryCount = 0;
@@ -1228,6 +1252,19 @@ function computeTrendMetrics(rangeKey) {
       addMealTypeAgg(m, isFirstOfDay);
     });
     mealEntryCount += dayMeals.length;
+
+    // その日の食卓に、どのカテゴリの食品が並んだか
+    const dayCats = new Set();
+    dayMeals.forEach((m) => {
+      const name = m.name || "";
+      if (name) mealNameSet.add(name);
+      Object.entries(FOOD_CATEGORY_KEYWORDS).forEach(([cat, words]) => {
+        if (words.some((w) => name.includes(w))) dayCats.add(cat);
+      });
+    });
+    dayCats.forEach((c) => {
+      foodCatDays[c] = (foodCatDays[c] || 0) + 1;
+    });
 
     if (hasMeal) {
       const mins = dayMeals.map((m) => timeToMinutes(m.time)).filter((v) => v !== null);
@@ -1329,6 +1366,11 @@ function computeTrendMetrics(rangeKey) {
   const targetFatShare = state.profile ? Number(state.profile.fatRatio || 25) : null;
   const avgSetsPerWorkoutDay = workoutDays > 0 ? +(setCountSum / workoutDays).toFixed(1) : null;
 
+  // たんぱく源が何種類あるか(2回以上登場したものだけ数える)
+  const proteinSourceCats = PROTEIN_SOURCE_CATEGORIES.filter((c) => (foodCatDays[c] || 0) >= 2);
+  // 同じメニューばかりになっていないか(メニュー名の種類 ÷ 記録した食事の件数)
+  const menuVariety = mealEntryCount > 0 ? Math.round((mealNameSet.size / mealEntryCount) * 100) : null;
+
   // 一番よく記録している種目の重量が、期間の前半と後半で伸びているか
   let progression = null;
   Object.entries(exerciseSessions).forEach(([name, sessions]) => {
@@ -1384,6 +1426,10 @@ function computeTrendMetrics(rangeKey) {
     weekendCalPct,
     fatCalShare,
     targetFatShare,
+    foodCatDays,
+    proteinSourceCats,
+    menuVariety,
+    distinctMenus: mealNameSet.size,
     muscleGroupCounts,
     avgSetsPerWorkoutDay,
     longestNoTrainGap,
@@ -1495,7 +1541,7 @@ function foodsForMealType(foods, mealType) {
   return foods.slice(0, 2);
 }
 
-const ADVICE_MAX_ITEMS = 6; // 出しすぎても読まないので、上位いくつかに絞る
+const ADVICE_MAX_ITEMS = 7; // 出しすぎても読まないので、上位いくつかに絞る
 const ADVICE_MAX_PER_CATEGORY = 2; // 同じ切り口ばかりにならないよう、分野ごとに上限を設ける
 
 // 「気づき」が目標との単純な過不足(達成率)を見るのに対して、こちらは
@@ -1609,6 +1655,82 @@ function generateExpertAdvice(m) {
       "info",
       `摂取カロリーの${m.snackCalShare}%が間食からです。間食は補助として便利ですが、食事の方でしっかり摂れると栄養バランスが安定します。`
     );
+  }
+
+  // ---------- 栄養面(何を食べているか) ----------
+  // カロリーとPFCが合っていても、食材が偏るとビタミン・ミネラル・食物繊維が
+  // 不足しやすい。メニュー名から食品の登場頻度を見て、中身の偏りを指摘する。
+  const catDay = (c) => m.foodCatDays[c] || 0;
+  if (m.loggedMealDays >= 5) {
+    const vegRate = catDay("野菜") / m.loggedMealDays;
+    if (vegRate < 0.4) {
+      push(
+        "food",
+        2,
+        "warning",
+        `食事を記録した${m.loggedMealDays}日のうち、野菜が出てきたのは${catDay("野菜")}日だけです。ビタミン・ミネラル・食物繊維が不足すると、食べた栄養を筋肉に変える効率そのものが落ちます。味噌汁やサラダ、ブロッコリーを1品足すだけでも変わります。`
+      );
+    }
+
+    // 魚は週1回も無いなら、脂の質(オメガ3)の観点で提案する
+    if (catDay("魚") <= Math.floor(m.loggedMealDays / 7)) {
+      push(
+        "food",
+        3,
+        "info",
+        `記録の中に魚がほとんど出てきていません(${catDay("魚")}日)。魚の脂(オメガ3)は関節の炎症を抑えて回復を助けるので、週1〜2回はサーモンやツナ缶に置き換えると、同じたんぱく質量でも体の回復が変わります。`
+      );
+    }
+
+    if (catDay("果物") / m.loggedMealDays < 0.2) {
+      push(
+        "food",
+        4,
+        "info",
+        `果物の登場が${catDay("果物")}日と少なめです。ビタミンCやカリウムは汗と一緒に失われやすく、不足すると疲れが抜けにくくなります。トレーニング前後のバナナは、糖質補給も兼ねられて手軽です。`
+      );
+    }
+
+    // たんぱく源の種類が少ないと、アミノ酸や微量栄養素が偏る
+    if (m.proteinSourceCats.length > 0 && m.proteinSourceCats.length <= 2) {
+      push(
+        "food",
+        3,
+        "warning",
+        `たんぱく質の摂取元が${m.proteinSourceCats.join("・")}に偏っています。肉・魚・卵・大豆・乳製品では含まれる微量栄養素が違うので、種類を散らすと同じたんぱく質量でも体づくりが有利になります。`
+      );
+    }
+
+    // 粉のプロテインに頼りすぎていないか
+    const proteinPowderRate = catDay("プロテイン") / m.loggedMealDays;
+    if (proteinPowderRate >= 0.7 && catDay("魚") + catDay("卵") + catDay("大豆") < m.loggedMealDays * 0.5) {
+      push(
+        "food",
+        4,
+        "info",
+        `たんぱく質をプロテイン(粉)に頼る割合が高くなっています。手軽さは大きな武器ですが、食事から摂ると鉄・亜鉛・ビタミンB群も一緒に入ってきます。1回分を卵や納豆に置き換えるところから試してみてください。`
+      );
+    }
+
+    // 同じメニューの繰り返しは、足りない栄養素も固定されてしまう
+    if (m.menuVariety !== null && m.menuVariety < 30 && m.loggedMealDays >= 7) {
+      push(
+        "food",
+        4,
+        "info",
+        `記録された食事${m.loggedMealDays}日分のうち、メニューの種類は${m.distinctMenus}通りでした。同じものが続くと、足りない栄養素もずっと同じものが足りないままになります。主食を白米からオートミールに変える日を作るだけでも、食物繊維とミネラルが補えます。`
+      );
+    }
+
+    // 中身が整っている場合はきちんと認める
+    if (vegRate >= 0.6 && catDay("魚") >= 2 && m.proteinSourceCats.length >= 3) {
+      push(
+        "food",
+        5,
+        "good",
+        `野菜が${catDay("野菜")}日、魚が${catDay("魚")}日登場し、たんぱく源も${m.proteinSourceCats.length}種類に散らせています。数字に出ないビタミン・ミネラル面まで整っている、質の高い食事内容です。`
+      );
+    }
   }
 
   // ---------- 生活リズム ----------
