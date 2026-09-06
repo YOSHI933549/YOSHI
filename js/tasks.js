@@ -151,6 +151,20 @@ function renderTasks() {
       item.appendChild(result);
     }
 
+    if (t.qualityCheck) {
+      const check = document.createElement("div");
+      check.className = "task-result task-check";
+      check.textContent = "✅ 自己チェック: " + t.qualityCheck;
+      item.appendChild(check);
+    }
+
+    if (t.nextAction) {
+      const next = document.createElement("div");
+      next.className = "task-result task-next";
+      next.textContent = "👉 次に繋げる提案: " + t.nextAction;
+      item.appendChild(next);
+    }
+
     const meta = document.createElement("div");
     meta.className = "meta";
     meta.textContent = "更新: " + (formatDateTime(t.updatedAt) || "―");
