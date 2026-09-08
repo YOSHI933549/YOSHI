@@ -12,6 +12,9 @@ const DEFAULT_STATE = {
   weightLogs: [], // {id, date, weight}
   meals: [], // {id, date, time, type, name, calories, protein, fat, carbs, memo, photo}
   workouts: [], // {id, date, name, sets:[{reps, weight}], memo}
+  // n8n から取り込み済みの食事の行ID。取り込んだ記録をアプリ側で削除しても
+  // 次の取得で復活しないように、「もう取り込んだ」ことだけを覚えておく。
+  importedMealIds: [],
 };
 
 let state = loadState();
